@@ -1,0 +1,56 @@
+@import "tailwindcss";
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-muted-fg: var(--muted-fg);
+  --color-card: var(--card);
+  --color-border: var(--border);
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
+
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+}
+
+:root {
+  --bg: #ffffff;
+  --fg: #0a0a0a;
+  --muted: #f4f4f5;
+  --muted-fg: #71717a;
+  --card: #ffffff;
+  --border: #e4e4e7;
+  --accent: #111111;
+  --accent-fg: #ffffff;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #09090b;
+    --fg: #fafafa;
+    --muted: #18181b;
+    --muted-fg: #a1a1aa;
+    --card: #0f0f12;
+    --border: #27272a;
+    --accent: #fafafa;
+    --accent-fg: #09090b;
+  }
+}
+
+html, body { height: 100%; }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Importance bar accent color */
+.importance-95 { background: linear-gradient(90deg, #ef4444, #f97316); }
+.importance-85 { background: linear-gradient(90deg, #f97316, #eab308); }
+.importance-70 { background: linear-gradient(90deg, #eab308, #22c55e); }
+.importance-50 { background: #22c55e; }
+.importance-30 { background: #6b7280; }
+.importance-10 { background: #3f3f46; }
