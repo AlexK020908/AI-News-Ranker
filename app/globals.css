@@ -1,41 +1,56 @@
 @import "tailwindcss";
 
+*::-webkit-scrollbar { display: none; }
+* { -ms-overflow-style: none; scrollbar-width: none; }
+
+button { cursor: pointer; }
+button:disabled { cursor: not-allowed; }
+
+/* ── Theme: obsidian-inspired dark with warm purple undertone ─────────
+   Mirrors ../jackpot/frontend tokens so both apps feel like one family. */
 @theme inline {
   --color-bg: var(--bg);
   --color-fg: var(--fg);
+  --color-card: var(--card);
+  --color-card-raised: var(--card-raised);
+  --color-popover: var(--popover);
   --color-muted: var(--muted);
   --color-muted-fg: var(--muted-fg);
-  --color-card: var(--card);
   --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-fg: var(--primary-fg);
   --color-accent: var(--accent);
   --color-accent-fg: var(--accent-fg);
+  --color-success: var(--success);
+  --color-danger: var(--danger);
+  --color-warn: var(--warn);
 
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+
+  --radius: 0.5rem;
 }
 
 :root {
-  --bg: #ffffff;
-  --fg: #0a0a0a;
-  --muted: #f4f4f5;
-  --muted-fg: #71717a;
-  --card: #ffffff;
-  --border: #e4e4e7;
-  --accent: #111111;
-  --accent-fg: #ffffff;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #09090b;
-    --fg: #fafafa;
-    --muted: #18181b;
-    --muted-fg: #a1a1aa;
-    --card: #0f0f12;
-    --border: #27272a;
-    --accent: #fafafa;
-    --accent-fg: #09090b;
-  }
+  --bg: #1a1a2e;
+  --fg: #dcddde;
+  --card: #262640;
+  --card-raised: #2a2a44;
+  --popover: #222238;
+  --muted: #222238;
+  --muted-fg: #888896;
+  --border: #2e2e48;
+  --border-strong: #3a3a5c;
+  --primary: #a78bfa;
+  --primary-hover: #8b6cf7;
+  --primary-fg: #0f0f1a;
+  --accent: #4ade80;
+  --accent-fg: #064e3b;
+  --success: #4ade80;
+  --danger: #f87171;
+  --warn: #fbbf24;
 }
 
 html, body { height: 100%; }
@@ -47,10 +62,48 @@ body {
   text-rendering: optimizeLegibility;
 }
 
-/* Importance bar accent color */
-.importance-95 { background: linear-gradient(90deg, #ef4444, #f97316); }
-.importance-85 { background: linear-gradient(90deg, #f97316, #eab308); }
-.importance-70 { background: linear-gradient(90deg, #eab308, #22c55e); }
-.importance-50 { background: #22c55e; }
+/* Ambient backdrop — subtle purple wash behind the feed */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(1100px 520px at 15% -10%, rgba(167, 139, 250, 0.12), transparent 60%),
+    radial-gradient(900px 500px at 95% 0%, rgba(74, 222, 128, 0.06), transparent 60%);
+  z-index: 0;
+}
+body > * { position: relative; z-index: 1; }
+
+/* ── Importance bar — tuned for dark bg ───────────────────────────── */
+.importance-95 { background: linear-gradient(90deg, #f43f5e, #fb923c); box-shadow: 0 0 12px rgba(251, 146, 60, 0.35); }
+.importance-85 { background: linear-gradient(90deg, #fb923c, #facc15); box-shadow: 0 0 10px rgba(250, 204, 21, 0.25); }
+.importance-70 { background: linear-gradient(90deg, #facc15, #4ade80); }
+.importance-50 { background: #4ade80; }
 .importance-30 { background: #6b7280; }
-.importance-10 { background: #3f3f46; }
+.importance-10 { background: #3f3f5c; }
+
+/* ── Shared accents ───────────────────────────────────────────────── */
+.panel {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.panel-raised { background: var(--card-raised); }
+
+.glow-primary { box-shadow: 0 0 0 1px rgba(167, 139, 250, 0.35), 0 8px 28px -12px rgba(167, 139, 250, 0.4); }
+.glow-accent  { box-shadow: 0 0 0 1px rgba(74, 222, 128, 0.35), 0 8px 28px -12px rgba(74, 222, 128, 0.35); }
+
+.label-caps {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+@keyframes in-fade {
+  0%   { opacity: 0; transform: translateY(-6px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+.animate-in-fade { animation: in-fade 0.4s cubic-bezier(0.16, 1, 0.3, 1) both; }

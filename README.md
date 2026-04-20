@@ -6,7 +6,7 @@ A real-time web dashboard that aggregates **what actually matters in AI** — ne
 
 ## What's inside
 
-- **25+ sources** out of the box: OpenAI / Anthropic / DeepMind / Meta / NVIDIA blogs, arXiv (cs.AI/LG/CL/CV), GitHub trending (AI/LLM/agents/ML), HuggingFace trending models + datasets, Hacker News (AI-filtered), Reddit (LocalLLaMA, MachineLearning, singularity, OpenAI), TechCrunch AI, VentureBeat, MIT Tech Review, Papers with Code, Mistral, Cohere, and more.
+- **33+ sources** out of the box: OpenAI / Anthropic / DeepMind / Meta / NVIDIA / Mistral / Cohere / Stability / Together / Perplexity / Cerebras / Databricks blogs, arXiv (cs.AI/LG/CL/CV), GitHub trending (AI/LLM/agents/ML), HuggingFace trending models + datasets, Hacker News (AI-filtered), Reddit (LocalLLaMA, MachineLearning, singularity, OpenAI), TechCrunch AI, VentureBeat, MIT Tech Review, The Verge AI, Papers with Code, Jay Alammar, The Gradient, Simon Willison, Jack Clark's Import AI, LessWrong AI, and more.
 - **Claude Haiku 4.5** summarizes every item and scores it 0–100 for importance (calibrated rubric — reserves 85+ for genuinely big news).
 - **Semantic dedup** via Voyage embeddings + pgvector, so "GPT-5 released" from 5 sources collapses to one item.
 - **Real-time UI**: Supabase Realtime streams new enriched items to the browser as they drop.
@@ -31,7 +31,9 @@ A real-time web dashboard that aggregates **what actually matters in AI** — ne
 1. Create a project at [supabase.com](https://supabase.com).
 2. In the SQL editor, run:
    - `supabase/migrations/001_init.sql` (schema + RLS + realtime)
-   - `supabase/seed/sources.sql` (25+ seed sources)
+   - `supabase/migrations/002_semantic_dedup.sql` (duplicate_of + recent-similar RPC)
+   - `supabase/migrations/003_source_expansion.sql` (+8 RSS sources)
+   - `supabase/seed/sources.sql` (33+ seed sources)
 
 ### 2. Environment
 
@@ -57,10 +59,10 @@ Open [http://localhost:3000](http://localhost:3000). With no data you'll see a s
 ## Roadmap
 
 - [x] **Phase 1 — Foundation**: scaffold, schema, Anthropic/Supabase wiring, feed UI skeleton
-- [ ] **Phase 2 — Ingestion core**: RSS / arXiv / GitHub / HN / Reddit / HF adapters + cron worker
-- [ ] **Phase 3 — Enrichment**: Haiku summarize/classify/score + Voyage embeddings + semantic dedup
-- [ ] **Phase 4 — UI polish**: realtime stream, search, detail pages
-- [ ] **Phase 5 — Source expansion**: remaining feeds, custom scrapers where no RSS exists
+- [x] **Phase 2 — Ingestion core**: RSS / arXiv / GitHub / HN / Reddit / HF adapters + cron worker
+- [x] **Phase 3 — Enrichment**: Haiku summarize/classify/score + Voyage embeddings + semantic dedup
+- [x] **Phase 4 — UI polish**: realtime stream, search, detail pages
+- [x] **Phase 5 — Source expansion**: +8 high-signal RSS feeds (labs, infra, independent voices)
 - [ ] **Phase 6 — Push + deploy**: web-push on importance ≥ 85, Vercel cron, production deploy
 
 ## Project layout

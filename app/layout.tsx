@@ -31,10 +31,10 @@ export default function RootLayout({
     >
       <body className="min-h-dvh flex flex-col bg-bg text-fg">
         <Header />
-        <main className="flex-1 w-full max-w-5xl mx-auto px-4 sm:px-6 py-6">
+        <main className="flex-1 w-full max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
           {children}
         </main>
-        <footer className="w-full max-w-5xl mx-auto px-4 sm:px-6 py-10 text-xs text-muted-fg">
+        <footer className="w-full max-w-5xl mx-auto px-4 sm:px-6 py-10 label-caps text-muted-fg">
           Curated with Claude Haiku 4.5 · updated in real time
         </footer>
       </body>

@@ -19,6 +19,31 @@ export function truncate(s: string, n: number): string {
   return s.length <= n ? s : s.slice(0, n - 1).trimEnd() + "…";
 }
 
+export async function runPool<T>(
+  items: readonly T[],
+  concurrency: number,
+  worker: (item: T, index: number) => Promise<void>,
+): Promise<void> {
+  const n = Math.max(1, Math.min(concurrency, items.length || 1));
+  let cursor = 0;
+  await Promise.all(
+    Array.from({ length: n }, async () => {
+      while (cursor < items.length) {
+        const idx = cursor++;
+        await worker(items[idx], idx);
+      }
+    }),
+  );
+}
+
+export const SEARCH_MAX_LEN = 80;
+
+// Strips anything that would break PostgREST `.or()` parsing (commas, parens,
+// braces used by array literals, quotes) or act as an ilike wildcard (%, _, \).
+export function sanitizeIlike(s: string, maxLen = SEARCH_MAX_LEN): string {
+  return s.replace(/[,()%_\\{}"]/g, "").trim().slice(0, maxLen);
+}
+
 export function stripHtml(s: string): string {
   return s
     .replace(/<script[\s\S]*?<\/script>/gi, "")

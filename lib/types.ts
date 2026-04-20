@@ -1,3 +1,7 @@
+export function isCategory(x: unknown): x is Category {
+  return typeof x === "string" && (CATEGORIES as readonly string[]).includes(x);
+}
+
 export const CATEGORIES = [
   "paper",
   "model",
@@ -67,6 +71,7 @@ export interface Item {
   tags: string[];
   importance: number | null;
   embedding: number[] | null;
+  duplicate_of: string | null;
   published_at: string | null;
   ingested_at: string;
   enriched_at: string | null;
