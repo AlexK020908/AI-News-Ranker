@@ -34,7 +34,7 @@ A real-time web dashboard that aggregates **what actually matters in AI** — ne
 1. Create a project at [supabase.com](https://supabase.com).
 2. In the SQL editor, run (in order):
    - `supabase/migrations/001_schema.sql` — full schema, RLS, realtime, triggers, and RPCs (`similar_items`, `similar_recent_items`, `bump_duplicate_count`, `recompute_topic_sizes`, `trending_items`, `top_topics`)
-   - `supabase/seed/sources.sql` — 36+ seed sources + reputation weights
+   - `supabase/seed/sources.sql` — 32 seed sources + reputation weights
 
 ### 2. Environment
 
@@ -45,29 +45,43 @@ cp .env.example .env.local
 Fill in:
 - `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` — from Supabase project settings → API
 - `ANTHROPIC_API_KEY` — from [console.anthropic.com](https://console.anthropic.com)
-- `OPENAI_API_KEY` — optional; enables semantic dedup (used only for embeddings via `text-embedding-3-small`)
-- `CRON_SECRET` — any long random string (used to auth cron endpoints once Phase 2 lands)
-- `SEMANTIC_SCHOLAR_API_KEY` — optional; raises S2 rate limits for paper-citation enrichment
+- `VOYAGE_API_KEY` — optional; enables semantic dedup via `voyage-3` embeddings (200M free tokens on signup)
+- `CRON_SECRET` — any long random string; required to call `/api/cron/*` endpoints
+- `ITEM_RETENTION_DAYS` — default `14`; items older than this get auto-pruned at ingest time
+- `GITHUB_TOKEN` — optional; raises GitHub trending/search rate limits from 60/hr to 5000/hr
+- `SEMANTIC_SCHOLAR_API_KEY` — optional; raises S2 rate limits for arXiv citation enrichment
 
-### 3. Run
+### 3. Run locally
 
+You need **two terminals**: one for the Next.js dev server, one for the ingest/enrich loop. The dev server alone shows an empty feed — new items only flow in when the cron endpoints get hit.
+
+**Terminal 1 — dev server:**
 ```bash
 npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). With no data you'll see a setup banner; after Phase 2 ingestion runs, items stream in.
+Open [http://localhost:3000](http://localhost:3000). Empty feed is expected until the loop kicks in.
 
-## Roadmap
+**Terminal 2 — ingest + enrich loop (every 15 min):**
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\loop.ps1
+```
 
-- [x] **Phase 1 — Foundation**: scaffold, schema, Anthropic/Supabase wiring, feed UI skeleton
-- [x] **Phase 2 — Ingestion core**: RSS / arXiv / GitHub / HN / HF adapters + cron worker
-- [x] **Phase 3 — Enrichment**: Haiku summarize/classify/score + Voyage embeddings + semantic dedup
-- [x] **Phase 4 — UI polish**: realtime stream, search, detail pages
-- [x] **Phase 5 — Source expansion**: +8 high-signal RSS feeds (labs, infra, independent voices)
-- [x] **Phase 6 — Trending & Discord push**: duplicate-count velocity signal, trending sort, Discord webhook subscriptions
-- [x] **Phase 7 — First-class topics**: embedding-based clustering cron + Haiku cluster labels + topics strip + topic detail page
-- [ ] **Phase 8 — Production deploy**: Vercel cron + domain + observability
+`scripts/loop.ps1` reads `CRON_SECRET` from `.env.local`, hits `/api/cron/ingest` then `/api/cron/enrich`, sleeps 15 min, repeats. Leave it running — items start appearing in the feed within a minute.
+
+**Quick one-off test (no loop):**
+```bash
+curl -H "Authorization: Bearer <CRON_SECRET>" http://localhost:3000/api/cron/ingest
+curl -H "Authorization: Bearer <CRON_SECRET>" http://localhost:3000/api/cron/enrich
+```
+
+**Survive reboots:** register `scripts/loop.ps1` in Windows Task Scheduler as a "run at logon" task.
+
+### 4. Automate in production (optional)
+
+- **Vercel cron** — `vercel.json` already declares schedules. Requires Vercel Pro ($20/mo) — Hobby's 60s function timeout and daily-only crons won't work here.
+- **GitHub Actions** — free (2000 min/mo). Add a workflow that `curl`s the deployed `/api/cron/*` endpoints on a `*/15 * * * *` schedule.
 
 ## Project layout
 
