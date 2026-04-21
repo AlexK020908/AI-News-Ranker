@@ -1,6 +1,7 @@
 import { truncate } from "@/lib/utils";
 import type { Adapter } from "./types";
 import { fetchJson, readNumberConfig, readStringConfig } from "./http";
+import { githubStarsEngagement } from "./engagement";
 
 function sinceDate(since: string): string {
   const d = new Date();
@@ -55,6 +56,7 @@ export const githubTrendingAdapter: Adapter = async (ctx) => {
         2000,
       ),
       published_at: r.pushed_at || r.created_at || null,
+      engagement_score: githubStarsEngagement(r.stargazers_count),
       raw: {
         stars: r.stargazers_count,
         topics: r.topics ?? [],

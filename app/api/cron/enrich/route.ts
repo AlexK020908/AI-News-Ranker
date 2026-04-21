@@ -2,6 +2,11 @@ import type { NextRequest } from "next/server";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { enrichItem } from "@/lib/anthropic/enrich";
 import { embedText } from "@/lib/anthropic/embed";
+import {
+  extractArxivId,
+  fetchPaperSignals,
+  shouldFetchPaperSignals,
+} from "@/lib/anthropic/semantic-scholar";
 import { isAuthorizedCron } from "@/lib/cron-auth";
 import { runPool } from "@/lib/utils";
 import type { SourceKind } from "@/lib/types";
@@ -20,12 +25,13 @@ const DEDUP_WINDOW_HOURS = 72;
 
 interface UnenrichedRow {
   id: string;
+  source_id: string;
   title: string;
   url: string;
   author: string | null;
   content: string | null;
   published_at: string | null;
-  source: { name: string; kind: SourceKind };
+  source: { name: string; kind: SourceKind; reputation_weight: number };
 }
 
 export async function GET(req: NextRequest) {
@@ -44,7 +50,7 @@ export async function GET(req: NextRequest) {
     const { data, error } = await supabase
       .from("items")
       .select(
-        "id, title, url, author, content, published_at, source:sources!inner(name, kind)",
+        "id, source_id, title, url, author, content, published_at, source:sources!inner(name, kind, reputation_weight)",
       )
       .is("enriched_at", null)
       .is("enrich_error", null)
@@ -96,8 +102,29 @@ export async function GET(req: NextRequest) {
           if (match && match.id !== r.id) update.duplicate_of = match.id;
         }
 
+        // Semantic Scholar enrichment for arXiv papers (non-fatal).
+        const arxivId = extractArxivId(r.url);
+        if (arxivId && shouldFetchPaperSignals(r.published_at)) {
+          try {
+            const signals = await fetchPaperSignals(arxivId);
+            if (signals) {
+              update.paper_citations = signals.citations;
+              update.paper_influential_citations = signals.influential_citations;
+              if (signals.tldr) update.paper_tldr = signals.tldr;
+            }
+          } catch {
+            // Ignore — S2 is optional signal.
+          }
+        }
+
         const { error: uErr } = await supabase.from("items").update(update).eq("id", r.id);
         if (uErr) throw new Error(uErr.message);
+        if (update.duplicate_of) {
+          await supabase.rpc("bump_duplicate_count", {
+            canonical_id: update.duplicate_of as string,
+            dup_weight: r.source.reputation_weight ?? 1.0,
+          });
+        }
         enriched++;
       } catch (e) {
         failed++;

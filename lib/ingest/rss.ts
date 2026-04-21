@@ -12,6 +12,16 @@ const parser = new Parser({
   },
 });
 
+// rss-parser returns `{ _: string, $: attrs }` when an element carries XML
+// attributes (e.g. <guid isPermaLink="false">…</guid>). Coerce to a plain string.
+function rssString(val: unknown, fallback = ""): string {
+  if (typeof val === "string") return val;
+  if (val && typeof val === "object" && "_" in val) {
+    return String((val as { _?: unknown })._ ?? fallback);
+  }
+  return fallback;
+}
+
 export const rssAdapter: Adapter = async (ctx) => {
   const url = readStringConfig(ctx, "url").trim();
   if (!url) return { items: [], error: "rss: missing config.url" };
@@ -20,10 +30,10 @@ export const rssAdapter: Adapter = async (ctx) => {
     const feed = await parser.parseURL(url);
     const items = (feed.items ?? [])
       .map((it) => {
-        const link = (it.link || it.guid || "").trim();
+        const link = rssString(it.link ?? it.guid).trim();
         const title = (it.title || "").trim();
         if (!link || !title) return null;
-        const externalId = (it.guid || link).slice(0, 400);
+        const externalId = rssString(it.guid, link).slice(0, 400);
         const pub = it.isoDate || it.pubDate || null;
         const raw = it.content || it["content:encoded"] || it.summary || "";
         const snippet = (it.contentSnippet || stripHtml(String(raw))).trim();

@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { IngestRawItem } from "./types";
 import { sha256Hex } from "@/lib/utils";
+import { retentionCutoffIso } from "./retention";
 
 const INSERT_CHUNK = 100;
 
@@ -11,9 +12,15 @@ export async function upsertItems(
 ): Promise<{ inserted: number; skipped: number }> {
   if (items.length === 0) return { inserted: 0, skipped: 0 };
 
+  // Drop items older than the retention window so they never land in the DB
+  // (saves Haiku enrichment cost on stale backfill from full-history feeds).
+  // Null published_at = unknown age, keep.
+  const cutoff = retentionCutoffIso();
+  const recent = items.filter((i) => !i.published_at || i.published_at >= cutoff);
+
   // De-dupe within the batch first — same URL can appear twice in one feed.
   const byUrl = new Map<string, IngestRawItem>();
-  for (const it of items) {
+  for (const it of recent) {
     if (!byUrl.has(it.url)) byUrl.set(it.url, it);
   }
   const unique = Array.from(byUrl.values());
@@ -30,6 +37,7 @@ export async function upsertItems(
         [i.title, i.url, (i.content ?? "").slice(0, 2000)].join("\x1f"),
       ),
       published_at: i.published_at ?? null,
+      engagement_score: i.engagement_score ?? 0,
       raw: i.raw ?? {},
     })),
   );
@@ -45,5 +53,5 @@ export async function upsertItems(
     inserted += data?.length ?? 0;
   }
 
-  return { inserted, skipped: unique.length - inserted };
+  return { inserted, skipped: items.length - inserted };
 }

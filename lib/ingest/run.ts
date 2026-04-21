@@ -3,6 +3,7 @@ import type { Source } from "@/lib/types";
 import { runPool } from "@/lib/utils";
 import { adapters } from "./registry";
 import { upsertItems } from "./write";
+import { pruneOldItems } from "./retention";
 
 export interface RunResult {
   sourceSlug: string;
@@ -11,6 +12,12 @@ export interface RunResult {
   skipped: number;
   error: string | null;
   durationMs: number;
+}
+
+export interface IngestSummary {
+  results: RunResult[];
+  pruned: number;
+  cutoff: string;
 }
 
 export async function runIngestionForSource(
@@ -71,7 +78,10 @@ async function markPolled(supabase: SupabaseClient, id: string, error: string | 
 export async function runIngestionForAll(
   supabase: SupabaseClient,
   opts: { concurrency?: number; onlySlugs?: string[] } = {},
-): Promise<RunResult[]> {
+): Promise<IngestSummary> {
+  // Sweep stale items first so they're gone before any new backfill lands.
+  const { deleted: pruned, cutoff } = await pruneOldItems(supabase);
+
   let query = supabase
     .from("sources")
     .select("id, slug, name, kind, config, poll_interval_sec, enabled, last_polled_at, last_error, created_at")
@@ -88,5 +98,5 @@ export async function runIngestionForAll(
     const r = await runIngestionForSource(supabase, source);
     results.push(r);
   });
-  return results;
+  return { results, pruned, cutoff };
 }

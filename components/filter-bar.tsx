@@ -1,22 +1,33 @@
 import Link from "next/link";
-import { CATEGORIES, CATEGORY_LABELS, type Category } from "@/lib/types";
+import {
+  CATEGORIES,
+  CATEGORY_LABELS,
+  SOURCE_GROUPS,
+  SOURCE_GROUP_LABELS,
+  type Category,
+  type SortMode,
+  type SourceGroup,
+} from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 export interface FilterBarProps {
   activeCategory?: Category | null;
-  activeSort?: "hot" | "new";
+  activeSort?: SortMode;
   minImportance?: number;
+  activeSourceGroup?: SourceGroup | null;
 }
 
 export function FilterBar({
   activeCategory,
   activeSort = "new",
   minImportance = 0,
+  activeSourceGroup = null,
 }: FilterBarProps) {
   const mkHref = (params: Record<string, string | undefined | null>) => {
     const current: Record<string, string> = { sort: activeSort };
     if (activeCategory) current.cat = activeCategory;
     if (minImportance) current.min = String(minImportance);
+    if (activeSourceGroup) current.src = activeSourceGroup;
     const next = { ...current, ...params };
     const qp = new URLSearchParams();
     for (const [k, v] of Object.entries(next)) {
@@ -28,7 +39,21 @@ export function FilterBar({
 
   return (
     <div className="mb-5 flex flex-col gap-3 rounded-lg border border-border bg-card/60 p-3 backdrop-blur-sm">
-      <div className="flex flex-wrap gap-1.5">
+      <nav
+        aria-label="Source groups"
+        className="-mx-1 flex items-center gap-1 overflow-x-auto px-1 pb-1"
+      >
+        <Tab href={mkHref({ src: null })} active={!activeSourceGroup}>
+          All
+        </Tab>
+        {SOURCE_GROUPS.map((g) => (
+          <Tab key={g} href={mkHref({ src: g })} active={activeSourceGroup === g}>
+            {SOURCE_GROUP_LABELS[g]}
+          </Tab>
+        ))}
+      </nav>
+
+      <div className="flex flex-wrap gap-1.5 border-t border-border pt-3">
         <Chip href={mkHref({ cat: null })} active={!activeCategory}>
           All
         </Chip>
@@ -43,6 +68,9 @@ export function FilterBar({
         <ToggleGroup label="Sort">
           <ToggleLink href={mkHref({ sort: "new" })} active={activeSort === "new"}>New</ToggleLink>
           <ToggleLink href={mkHref({ sort: "hot" })} active={activeSort === "hot"}>Hot</ToggleLink>
+          <ToggleLink href={mkHref({ sort: "trending" })} active={activeSort === "trending"}>
+            Trending
+          </ToggleLink>
         </ToggleGroup>
         <ToggleGroup label="Min importance">
           {[0, 40, 60, 80, 90].map((n) => (
@@ -57,6 +85,37 @@ export function FilterBar({
         </ToggleGroup>
       </div>
     </div>
+  );
+}
+
+function Tab({
+  href,
+  active,
+  children,
+}: {
+  href: string;
+  active?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <Link
+      href={href}
+      className={cn(
+        "relative shrink-0 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+        active
+          ? "text-primary"
+          : "text-muted-fg hover:text-fg",
+      )}
+      aria-current={active ? "page" : undefined}
+    >
+      {children}
+      {active && (
+        <span
+          aria-hidden
+          className="absolute left-2 right-2 -bottom-[calc(0.75rem+1px)] h-[2px] rounded-full bg-primary"
+        />
+      )}
+    </Link>
   );
 }
 

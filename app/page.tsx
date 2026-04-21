@@ -3,7 +3,20 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { FilterBar } from "@/components/filter-bar";
 import { SetupBanner } from "@/components/setup-banner";
 import { Feed, type SourceMap } from "@/components/feed";
-import { isCategory, type Category, type ItemWithSource, type SourceKind } from "@/lib/types";
+import { TopicsStrip } from "@/components/topics-strip";
+import { WebhookSignup } from "@/components/webhook-signup";
+import {
+  isCategory,
+  isSortMode,
+  isSourceGroup,
+  kindsFor,
+  type Category,
+  type ItemWithSource,
+  type SortMode,
+  type SourceGroup,
+  type SourceKind,
+  type TopicSummary,
+} from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -13,15 +26,17 @@ interface HomePageProps {
     sort?: string;
     cat?: string;
     min?: string;
+    src?: string;
   }>;
 }
 
 export default async function Home({ searchParams }: HomePageProps) {
   const sp = await searchParams;
 
-  const sort: "hot" | "new" = sp.sort === "hot" ? "hot" : "new";
+  const sort: SortMode = isSortMode(sp.sort) ? sp.sort : "new";
   const cat: Category | null = isCategory(sp.cat) ? sp.cat : null;
   const min = Math.max(0, Math.min(100, Number(sp.min) || 0));
+  const src: SourceGroup | null = isSourceGroup(sp.src) ? sp.src : null;
 
   if (!isSupabaseConfigured()) {
     return (
@@ -33,19 +48,41 @@ export default async function Home({ searchParams }: HomePageProps) {
   }
 
   const supabase = await createSupabaseServerClient();
-  const [items, sources] = await Promise.all([
-    loadItems(supabase, { sort, cat, min }),
+  const [items, sources, topics] = await Promise.all([
+    loadItems(supabase, { sort, cat, min, src }),
     loadSources(supabase),
+    loadTopTopics(supabase),
   ]);
   const sourceMap = toSourceMap(sources);
 
   return (
     <>
       <Hero items={items.length} sources={sources.length} />
-      <FilterBar activeCategory={cat} activeSort={sort} minImportance={min} />
-      <Feed initialItems={items} sources={sourceMap} filter={{ sort, cat, min }} />
+      <TopicsStrip topics={topics} />
+      <WebhookSignup />
+      <FilterBar
+        activeCategory={cat}
+        activeSort={sort}
+        minImportance={min}
+        activeSourceGroup={src}
+      />
+      <Feed initialItems={items} sources={sourceMap} filter={{ sort, cat, min, src }} />
     </>
   );
+}
+
+async function loadTopTopics(supabase: SupabaseClient): Promise<TopicSummary[]> {
+  try {
+    const { data, error } = await supabase.rpc("top_topics", { max_rows: 10 });
+    if (error) {
+      console.error("top_topics rpc:", error.message);
+      return [];
+    }
+    return (data ?? []) as TopicSummary[];
+  } catch (err) {
+    console.error("loadTopTopics exception:", err);
+    return [];
+  }
 }
 
 function isSupabaseConfigured() {
@@ -59,17 +96,31 @@ interface SourceRow {
   kind: SourceKind;
 }
 
+interface LoadOpts {
+  sort: SortMode;
+  cat: Category | null;
+  min: number;
+  src: SourceGroup | null;
+}
+
 async function loadItems(
   supabase: SupabaseClient,
-  opts: { sort: "hot" | "new"; cat: Category | null; min: number },
+  opts: LoadOpts,
 ): Promise<ItemWithSource[]> {
   try {
+    if (opts.sort === "trending") {
+      return await loadTrendingItems(supabase, opts);
+    }
+
+    const kinds = kindsFor(opts.src);
     let query = supabase
       .from("items")
       .select(
         `id, source_id, external_id, url, title, author, content, content_hash,
-         summary, category, tags, importance, published_at, ingested_at,
-         enriched_at, enrich_error, duplicate_of,
+         summary, category, tags, importance, duplicate_count,
+         engagement_score, source_weight_sum, topic_size,
+         paper_citations, paper_influential_citations, paper_tldr,
+         published_at, ingested_at, enriched_at, enrich_error, duplicate_of,
          source:sources!inner(slug, name, kind)`,
       )
       .not("enriched_at", "is", null)
@@ -78,6 +129,7 @@ async function loadItems(
 
     if (opts.cat) query = query.eq("category", opts.cat);
     if (opts.min > 0) query = query.gte("importance", opts.min);
+    if (kinds) query = query.in("source.kind", kinds);
 
     if (opts.sort === "hot") {
       query = query.order("importance", { ascending: false, nullsFirst: false });
@@ -96,6 +148,44 @@ async function loadItems(
     console.error("loadItems exception:", err);
     return [];
   }
+}
+
+async function loadTrendingItems(
+  supabase: SupabaseClient,
+  opts: LoadOpts,
+): Promise<ItemWithSource[]> {
+  const kinds = kindsFor(opts.src);
+  const { data: scored, error } = await supabase.rpc("trending_items", {
+    min_importance: opts.min,
+    cat: opts.cat,
+    source_kinds: kinds,
+    max_rows: 60,
+  });
+  if (error) {
+    console.error("trending_items rpc error:", error.message);
+    return [];
+  }
+  const rows = (scored ?? []) as Array<{ id: string; source_id: string }>;
+  if (rows.length === 0) return [];
+
+  const sourceIds = Array.from(new Set(rows.map((r) => r.source_id)));
+  const { data: sources, error: srcErr } = await supabase
+    .from("sources")
+    .select("id, slug, name, kind")
+    .in("id", sourceIds);
+  if (srcErr) {
+    console.error("trending sources hydrate error:", srcErr.message);
+    return [];
+  }
+  const srcById = new Map((sources ?? []).map((s) => [s.id as string, s]));
+
+  return rows
+    .map((row) => {
+      const src = srcById.get(row.source_id);
+      if (!src) return null;
+      return { ...row, source: { slug: src.slug, name: src.name, kind: src.kind } };
+    })
+    .filter(Boolean) as unknown as ItemWithSource[];
 }
 
 async function loadSources(supabase: SupabaseClient): Promise<SourceRow[]> {

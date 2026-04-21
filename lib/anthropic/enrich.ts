@@ -5,6 +5,7 @@ import {
   type EnrichmentOutput,
 } from "./prompts";
 import { CATEGORIES, type Category } from "@/lib/types";
+import { extractJsonBlock } from "@/lib/utils";
 
 export interface EnrichInput {
   sourceName: string;
@@ -59,16 +60,9 @@ export async function enrichItem(input: EnrichInput): Promise<EnrichResult> {
 }
 
 function parseEnrichmentJSON(text: string): EnrichmentOutput {
-  let t = text.trim();
-  if (t.startsWith("```")) {
-    t = t.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "");
-  }
-  const firstBrace = t.indexOf("{");
-  const lastBrace = t.lastIndexOf("}");
-  if (firstBrace !== -1 && lastBrace !== -1) {
-    t = t.slice(firstBrace, lastBrace + 1);
-  }
-  const obj = JSON.parse(t);
+  const block = extractJsonBlock(text);
+  if (!block) throw new Error("no JSON body");
+  const obj = JSON.parse(block);
   if (typeof obj.summary !== "string") throw new Error("summary missing");
   if (typeof obj.category !== "string") throw new Error("category missing");
   if (!Array.isArray(obj.tags)) throw new Error("tags missing");

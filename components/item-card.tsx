@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { formatDistanceToNowStrict } from "date-fns";
-import { ArrowUpRight } from "lucide-react";
+import { ArrowUpRight, Flame } from "lucide-react";
 import type { ItemWithSource } from "@/lib/types";
 import { CATEGORY_LABELS } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -52,6 +52,15 @@ export function ItemCard({ item, isNew = false }: { item: ItemWithSource; isNew?
             <span className="font-mono tabular-nums text-[11px]">{rel}</span>
           </>
         )}
+        {item.duplicate_count >= 2 && (
+          <span
+            className="inline-flex items-center gap-1 rounded-md border border-orange-500/40 bg-orange-500/10 px-1.5 py-0.5 font-mono text-[10px] tabular-nums text-orange-300"
+            title={`${1 + item.duplicate_count} sources covered this`}
+          >
+            <Flame className="h-3 w-3" />
+            {1 + item.duplicate_count} sources
+          </span>
+        )}
         <span
           className={cn(
             "ml-auto inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 font-mono text-[11px] tabular-nums",
@@ -90,7 +99,6 @@ export function ItemCard({ item, isNew = false }: { item: ItemWithSource; isNew?
           target="_blank"
           rel="noopener noreferrer"
           className="relative z-10 ml-auto inline-flex items-center gap-1 label-caps text-muted-fg hover:text-primary transition-colors"
-          onClick={(e) => e.stopPropagation()}
         >
           source <ArrowUpRight className="h-3 w-3" />
         </a>

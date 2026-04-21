@@ -1,6 +1,7 @@
 import { truncate } from "@/lib/utils";
 import type { Adapter } from "./types";
 import { fetchJson, readNumberConfig, readStringConfig } from "./http";
+import { huggingfaceEngagement } from "./engagement";
 
 interface HFModel {
   id: string;
@@ -48,6 +49,7 @@ export const huggingfaceModelsAdapter: Adapter = async (ctx) => {
           2000,
         ) || null,
       published_at: m.lastModified || m.createdAt || null,
+      engagement_score: huggingfaceEngagement(m.likes ?? 0, m.downloads ?? 0),
       raw: { likes: m.likes, downloads: m.downloads, tags: m.tags ?? [], pipeline_tag: m.pipeline_tag },
     }));
     return { items };
@@ -80,6 +82,7 @@ export const huggingfaceDatasetsAdapter: Adapter = async (ctx) => {
           2000,
         ) || null,
       published_at: d.lastModified || d.createdAt || null,
+      engagement_score: huggingfaceEngagement(d.likes ?? 0, d.downloads ?? 0),
       raw: { likes: d.likes, downloads: d.downloads, tags: d.tags ?? [] },
     }));
     return { items };

@@ -1,10 +1,18 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 import { ItemCard } from "@/components/item-card";
 import { EmptyState } from "@/components/empty-state";
-import type { Category, Item, ItemWithSource, SourceKind } from "@/lib/types";
+import {
+  kindsFor,
+  type Category,
+  type Item,
+  type ItemWithSource,
+  type SortMode,
+  type SourceGroup,
+  type SourceKind,
+} from "@/lib/types";
 
 export type SourceInfo = { slug: string; name: string; kind: SourceKind };
 export type SourceMap = Record<string, SourceInfo>;
@@ -12,7 +20,12 @@ export type SourceMap = Record<string, SourceInfo>;
 interface Props {
   initialItems: ItemWithSource[];
   sources: SourceMap;
-  filter: { sort: "hot" | "new"; cat: Category | null; min: number };
+  filter: {
+    sort: SortMode;
+    cat: Category | null;
+    min: number;
+    src: SourceGroup | null;
+  };
 }
 
 const MAX_ITEMS = 60;
@@ -27,7 +40,7 @@ export function Feed({ initialItems, sources, filter }: Props) {
     setItems(initialItems);
   }, [initialItems]);
 
-  const { sort, cat, min } = filter;
+  const { sort, cat, min, src } = filter;
 
   useEffect(() => {
     const supabase = createSupabaseBrowserClient();
@@ -45,10 +58,13 @@ export function Feed({ initialItems, sources, filter }: Props) {
       )
       .subscribe();
 
+    const allowedKinds = kindsFor(src);
+    const allowedKindSet = allowedKinds ? new Set(allowedKinds) : null;
+
     function applyChange(row: Item) {
-      if (!matchesFilter(row, { sort, cat, min })) return;
+      if (!matchesFilter(row, cat, min)) return;
       const source = sources[row.source_id];
-      if (!source) return;
+      if (!source || (allowedKindSet && !allowedKindSet.has(source.kind))) return;
       const full: ItemWithSource = { ...row, source };
 
       setItems((prev) => {
@@ -84,33 +100,56 @@ export function Feed({ initialItems, sources, filter }: Props) {
       for (const t of timers.current.values()) clearTimeout(t);
       timers.current.clear();
     };
-  }, [sort, cat, min, sources]);
+  }, [sort, cat, min, src, sources]);
 
-  const rendered = useMemo(() => items, [items]);
-  if (rendered.length === 0) return <EmptyState />;
+  if (items.length === 0) return <EmptyState />;
 
   return (
     <div className="grid gap-3">
-      {rendered.map((item) => (
+      {items.map((item) => (
         <ItemCard key={item.id} item={item} isNew={justArrived.has(item.id)} />
       ))}
     </div>
   );
 }
 
-function matchesFilter(
-  item: Item,
-  filter: { sort: "hot" | "new"; cat: Category | null; min: number },
-) {
+function matchesFilter(item: Item, cat: Category | null, min: number) {
   if (item.enriched_at == null) return false;
   if (item.duplicate_of != null) return false;
-  if (filter.cat && item.category !== filter.cat) return false;
-  if (filter.min > 0 && (item.importance ?? 0) < filter.min) return false;
+  if (cat && item.category !== cat) return false;
+  if (min > 0 && (item.importance ?? 0) < min) return false;
   return true;
 }
 
-function sortComparator(sort: "hot" | "new") {
+// Realtime inserts bypass the trending_items() RPC, so we re-score client-side
+// to place them. Formula must stay in sync with the SQL in 001_schema.sql.
+const TRENDING_DUP_WEIGHT = 10;
+const TRENDING_TOPIC_WEIGHT = 3;
+const TRENDING_ENGAGEMENT_WEIGHT = 0.3;
+const TRENDING_DECAY = 1.5;
+
+function paperBonus(influential: number | null): number {
+  if (!influential || influential <= 0) return 0;
+  return 20 + Math.min(influential * 5, 40);
+}
+
+function trendingScore(item: ItemWithSource): number {
+  const baseTime = new Date(item.published_at ?? item.ingested_at).getTime();
+  const hours = Math.max(0, (Date.now() - baseTime) / 3_600_000);
+  const numerator =
+    (item.importance ?? 0) +
+    (item.engagement_score ?? 0) * TRENDING_ENGAGEMENT_WEIGHT +
+    (item.source_weight_sum ?? 1) * TRENDING_DUP_WEIGHT +
+    (item.topic_size ?? 0) * TRENDING_TOPIC_WEIGHT +
+    paperBonus(item.paper_influential_citations);
+  return numerator / Math.pow(hours + 2, TRENDING_DECAY);
+}
+
+function sortComparator(sort: SortMode) {
   return (a: ItemWithSource, b: ItemWithSource) => {
+    if (sort === "trending") {
+      return trendingScore(b) - trendingScore(a);
+    }
     const aDate = new Date(a.published_at ?? a.ingested_at).getTime();
     const bDate = new Date(b.published_at ?? b.ingested_at).getTime();
     if (sort === "hot") {

@@ -1,6 +1,7 @@
 import { truncate } from "@/lib/utils";
 import type { Adapter } from "./types";
 import { fetchJson, readNumberConfig, readStringConfig } from "./http";
+import { hnEngagement } from "./engagement";
 
 interface HNHit {
   objectID: string;
@@ -40,6 +41,7 @@ export const hackernewsAdapter: Adapter = async (ctx) => {
             4000,
           ) || null,
         published_at: h.created_at,
+        engagement_score: hnEngagement(h.points, h.num_comments),
         raw: { points: h.points, num_comments: h.num_comments },
       }));
     return { items };

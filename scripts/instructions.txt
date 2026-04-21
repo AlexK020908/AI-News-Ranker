@@ -1,0 +1,1 @@
+run with powershell -ExecutionPolicy Bypass -File .\scripts\loop.ps1

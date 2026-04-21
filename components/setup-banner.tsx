@@ -18,7 +18,7 @@ export function SetupBanner() {
           </div>
           <ol className="list-decimal space-y-2 pl-5 text-muted-fg">
             <li>
-              Create a Supabase project, then run <Code>supabase/migrations/001_init.sql</Code>{" "}
+              Create a Supabase project, then run <Code>supabase/migrations/001_schema.sql</Code>{" "}
               and <Code>supabase/seed/sources.sql</Code> in the SQL editor.
             </li>
             <li>

@@ -19,6 +19,18 @@ export function truncate(s: string, n: number): string {
   return s.length <= n ? s : s.slice(0, n - 1).trimEnd() + "…";
 }
 
+// Claude sometimes wraps JSON in ```json fences or emits prose around it.
+export function extractJsonBlock(text: string): string | null {
+  let t = text.trim();
+  if (t.startsWith("```")) {
+    t = t.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "");
+  }
+  const first = t.indexOf("{");
+  const last = t.lastIndexOf("}");
+  if (first === -1 || last === -1) return null;
+  return t.slice(first, last + 1);
+}
+
 export async function runPool<T>(
   items: readonly T[],
   concurrency: number,
