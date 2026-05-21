@@ -23,7 +23,7 @@ export function MiniCluster({ cluster, onOpen, index }: Props) {
     >
       <div className="mini__thumb">
         <div
-          className="thumb__layer on"
+          className={`thumb__layer on${lead.thumb.imageUrl ? " thumb__layer--image" : ""}`}
           style={{
             background: `linear-gradient(140deg,
               oklch(0.48 0.16 ${lead.thumb.hue}) 0%,
@@ -31,6 +31,19 @@ export function MiniCluster({ cluster, onOpen, index }: Props) {
               oklch(0.18 0.10 ${lead.thumb.hue + 50}) 100%)`,
           }}
         >
+          {lead.thumb.imageUrl && (
+            <img
+              className="thumb__image"
+              src={lead.thumb.imageUrl}
+              alt=""
+              loading="lazy"
+              referrerPolicy="no-referrer"
+              onError={(e) => {
+                e.currentTarget.style.display = "none";
+                e.currentTarget.parentElement?.classList.remove("thumb__layer--image");
+              }}
+            />
+          )}
           <div className="thumb__source">{lead.name}</div>
           <div className="thumb__label">{lead.thumb.label}</div>
         </div>

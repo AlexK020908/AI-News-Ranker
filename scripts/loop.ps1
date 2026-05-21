@@ -32,5 +32,17 @@
       Write-Host " batch=$($enr.batch) enriched=$($enr.enriched) failed=$($enr.failed)"
     } else { Write-Host "" }
 
+    Write-Host "[$ts] cluster..." -NoNewline
+    $cl = Hit "/api/jobs/cluster-topics"
+    if ($cl) {
+      Write-Host " clusters=$($cl.clusters) labeled=$($cl.labeled) reused=$($cl.reused)"
+    } else { Write-Host "" }
+
+    Write-Host "[$ts] notify..." -NoNewline
+    $nf = Hit "/api/jobs/notify"
+    if ($nf) {
+      Write-Host " delivered=$($nf.delivered)"
+    } else { Write-Host "" }
+
     Start-Sleep -Seconds 900
   }

@@ -69,7 +69,7 @@ export function ClusterDetail({ cluster, onBack }: Props) {
           >
             <div className="story__thumb">
               <div
-                className="thumb__layer on"
+                className={`thumb__layer on${s.thumb.imageUrl ? " thumb__layer--image" : ""}`}
                 style={{
                   background: `linear-gradient(140deg,
                     oklch(0.48 0.16 ${s.thumb.hue}) 0%,
@@ -77,6 +77,19 @@ export function ClusterDetail({ cluster, onBack }: Props) {
                     oklch(0.18 0.10 ${s.thumb.hue + 50}) 100%)`,
                 }}
               >
+                {s.thumb.imageUrl && (
+                  <img
+                    className="thumb__image"
+                    src={s.thumb.imageUrl}
+                    alt=""
+                    loading="lazy"
+                    referrerPolicy="no-referrer"
+                    onError={(e) => {
+                      e.currentTarget.style.display = "none";
+                      e.currentTarget.parentElement?.classList.remove("thumb__layer--image");
+                    }}
+                  />
+                )}
                 <div className="thumb__source">{s.name}</div>
                 <div className="thumb__label">{s.thumb.label}</div>
               </div>

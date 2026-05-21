@@ -2,6 +2,7 @@ import type { StoryBucket, StoryMember } from "@/lib/stories";
 import type { StackCluster, StackSource } from "./types";
 import { avatarFor, hueFor } from "./sources";
 import { topicForCluster } from "./topics";
+import { getStorage } from "@/lib/storage/s3";
 
 const WORDS_PER_MIN = 220;
 
@@ -29,6 +30,18 @@ function thumbLabel(m: StoryMember): string {
   return trimmed.length <= 64 ? trimmed : trimmed.slice(0, 60).replace(/\s+\S*$/, "") + "…";
 }
 
+// Prefer durable S3 URL when the bucket is configured + the enrich step
+// uploaded a thumbnail. Fall back to the publisher's original CDN URL
+// captured during ingest. Returns null when neither is available — the
+// renderer then shows the design's gradient-only thumbnail.
+function resolveImageUrl(m: StoryMember): string | null {
+  if (m.s3_storage_id) {
+    const url = getStorage().publicUrl(m.s3_storage_id);
+    if (url) return url;
+  }
+  return m.thumb_url ?? null;
+}
+
 function memberToSource(m: StoryMember): StackSource {
   const avatar = avatarFor(m.source_slug, m.source_name);
   return {
@@ -40,7 +53,11 @@ function memberToSource(m: StoryMember): StackSource {
     text: avatar.text,
     headline: m.title,
     hoursAgo: hoursAgoFrom(m.published_at),
-    thumb: { hue: hueFor(m.source_slug), label: thumbLabel(m) },
+    thumb: {
+      hue: hueFor(m.source_slug),
+      label: thumbLabel(m),
+      imageUrl: resolveImageUrl(m),
+    },
   };
 }
 

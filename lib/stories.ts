@@ -14,6 +14,11 @@ export interface StoryMember {
   source_slug: string;
   source_name: string;
   source_kind: SourceKind;
+  // Thumbnail wiring. s3_storage_id is the durable copy (set when S3_BUCKET is
+  // configured during enrich); thumb_url is the publisher's original CDN URL
+  // captured during ingest. The transform layer prefers s3 when present.
+  s3_storage_id: string | null;
+  thumb_url: string | null;
 }
 
 export interface StoryBucket {

@@ -17,7 +17,11 @@ export const maxDuration = 300;
 export const dynamic = "force-dynamic";
 
 const WINDOW_HOURS = 48;
-const CLUSTER_THRESHOLD = 0.78;
+// 0.72 catches loose thematic groupings — multi-outlet coverage of the same
+// story typically embeds at 0.80+, but related stories on the same topic
+// (different OpenAI announcements in the same week, etc.) sit around 0.72-0.80.
+// Tighten back to 0.78 if clusters start collapsing unrelated stories.
+const CLUSTER_THRESHOLD = 0.72;
 const MIN_CLUSTER_SIZE = 3;
 const TOPIC_MATCH_THRESHOLD = 0.85;
 const STALE_HOURS = 72;
@@ -41,7 +45,10 @@ interface ItemRow {
   importance: number | null;
   published_at: string | null;
   ingested_at: string;
-  embedding: number[] | null;
+  // pgvector columns come back from the Supabase JS client as their text
+  // serialization ('[0.01,0.02,...]'), not as a JS array. parseVector() below
+  // accepts either form so the cluster math works regardless.
+  embedding: number[] | string | null;
 }
 
 interface ExistingTopic {
@@ -49,8 +56,23 @@ interface ExistingTopic {
   slug: string;
   label: string;
   summary: string | null;
+  // Always a parsed array (or null) by the time this type is consumed;
+  // the raw row is normalized through parseVector() at load time.
   centroid: number[] | null;
   member_hash: string | null;
+}
+
+function parseVector(v: unknown): number[] | null {
+  if (Array.isArray(v)) return v.length > 0 ? (v as number[]) : null;
+  if (typeof v === "string" && v.length > 1) {
+    try {
+      const arr = JSON.parse(v);
+      return Array.isArray(arr) && arr.length > 0 ? (arr as number[]) : null;
+    } catch {
+      return null;
+    }
+  }
+  return null;
 }
 
 export async function GET(req: NextRequest) {
@@ -83,12 +105,12 @@ export async function GET(req: NextRequest) {
   const items = (itemRows ?? []) as ItemRow[];
 
   const clusterInputs = items
-    .filter((it) => Array.isArray(it.embedding) && it.embedding.length > 0)
-    .map((it) => ({
-      id: it.id,
-      embedding: it.embedding as number[],
-      importance: it.importance,
-    }));
+    .map((it) => {
+      const emb = parseVector(it.embedding);
+      if (!emb) return null;
+      return { id: it.id, embedding: emb, importance: it.importance };
+    })
+    .filter((x): x is { id: string; embedding: number[]; importance: number | null } => x !== null);
 
   const clusters = clusterByEmbedding(clusterInputs, {
     threshold: CLUSTER_THRESHOLD,
@@ -117,11 +139,17 @@ export async function GET(req: NextRequest) {
     .order("last_updated_at", { ascending: false })
     .limit(MAX_EXISTING_TOPICS);
   if (eErr) return Response.json({ error: eErr.message }, { status: 500 });
-  const existing = (existingRows ?? []) as ExistingTopic[];
+  // Parse the centroid text serialization into actual arrays once, here, so
+  // downstream code (bestTopicMatch + cosineSimilarityWithNorm) doesn't have
+  // to re-handle the pgvector → string quirk.
+  const existing: ExistingTopic[] = (existingRows ?? []).map((t) => ({
+    ...(t as ExistingTopic),
+    centroid: parseVector((t as ExistingTopic).centroid),
+  }));
   // Precompute centroid norms once — bestTopicMatch runs per cluster and each
   // cosineSimilarity call would otherwise re-norm the same topic vectors.
   const existingNorms = existing.map((t) =>
-    t.centroid && t.centroid.length > 0 ? vectorNorm(t.centroid) : 0,
+    Array.isArray(t.centroid) && t.centroid.length > 0 ? vectorNorm(t.centroid) : 0,
   );
 
   let labeled = 0;

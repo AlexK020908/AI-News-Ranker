@@ -25,10 +25,11 @@ export function RotatingThumb({ sources, paused }: Props) {
     <div className="thumb" onClick={handleClick}>
       {sources.map((s, i) => {
         const hue = s.thumb.hue;
+        const hasImage = !!s.thumb.imageUrl;
         return (
           <div
             key={i}
-            className={`thumb__layer ${i === idx ? "on" : ""}`}
+            className={`thumb__layer ${i === idx ? "on" : ""}${hasImage ? " thumb__layer--image" : ""}`}
             style={{
               background: `linear-gradient(140deg,
                 oklch(0.48 0.16 ${hue}) 0%,
@@ -36,6 +37,20 @@ export function RotatingThumb({ sources, paused }: Props) {
                 oklch(0.18 0.10 ${hue + 50}) 100%)`,
             }}
           >
+            {hasImage && (
+              <img
+                className="thumb__image"
+                src={s.thumb.imageUrl!}
+                alt=""
+                loading="lazy"
+                referrerPolicy="no-referrer"
+                onError={(e) => {
+                  // Hotlinked image got blocked/404 — drop back to the gradient.
+                  e.currentTarget.style.display = "none";
+                  e.currentTarget.parentElement?.classList.remove("thumb__layer--image");
+                }}
+              />
+            )}
             <div className="thumb__source">{s.name}</div>
             <div className="thumb__label">{s.thumb.label}</div>
           </div>

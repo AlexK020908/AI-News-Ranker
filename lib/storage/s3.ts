@@ -100,10 +100,17 @@ function makeS3Storage(deps: S3Deps): Storage {
       let body: ArrayBuffer;
       let contentType: string;
       try {
+        // Some publisher CDNs are slow and/or block scraper-y user agents.
+        // 20s timeout + browser UA covers the common cases; thumbnails that
+        // still fail get logged with the URL so they're easy to investigate.
         const resp = await fetch(sourceUrl, {
-          // Bound the download — most thumbnails are <500KB; we cap at 4MB.
-          signal: AbortSignal.timeout(8_000),
-          headers: { "User-Agent": "ai-news-feed/thumb-fetch" },
+          signal: AbortSignal.timeout(20_000),
+          headers: {
+            "User-Agent":
+              "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            Accept: "image/avif,image/webp,image/png,image/jpeg,image/*;q=0.8,*/*;q=0.5",
+          },
+          redirect: "follow",
         });
         if (!resp.ok) {
           console.warn(`[storage] thumbnail fetch ${resp.status} for ${sourceUrl}`);
@@ -120,7 +127,7 @@ function makeS3Storage(deps: S3Deps): Storage {
           return null;
         }
       } catch (e) {
-        console.warn(`[storage] thumbnail fetch failed: ${(e as Error).message}`);
+        console.warn(`[storage] thumbnail fetch failed (${sourceUrl}): ${(e as Error).message}`);
         return null;
       }
 

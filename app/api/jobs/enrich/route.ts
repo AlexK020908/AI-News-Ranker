@@ -19,9 +19,12 @@ export const dynamic = "force-dynamic";
 const BATCH_LIMIT = 30;
 const CONCURRENCY = 3;
 
-// Semantic dedup — tune as needed. voyage-3 title+summary for the same story
-// typically clusters in [0.88, 0.95]; below 0.88 the false-positive rate climbs fast.
-const DEDUP_THRESHOLD = 0.88;
+// Semantic dedup — only collapse true twins, not "related coverage". The
+// clusterer (at threshold 0.72) wants related-but-distinct items to remain as
+// separate canonicals; 0.93 keeps near-paraphrases together but preserves
+// stories that differ in angle or detail, so they can populate a story panel
+// instead of being silently absorbed.
+const DEDUP_THRESHOLD = 0.93;
 const DEDUP_WINDOW_HOURS = 72;
 
 interface UnenrichedRow {
@@ -87,7 +90,10 @@ export async function GET(req: NextRequest) {
         let embedding: number[] | null = null;
         try {
           embedding = await embedText([r.title, result.summary].filter(Boolean).join("\n"));
-        } catch {
+        } catch (e) {
+          // Log so partial Voyage failures (rate-limit, bad key) surface in the
+          // server logs instead of silently producing un-embedded items.
+          console.warn(`[enrich] embed failed for ${r.id}: ${(e as Error).message.slice(0, 200)}`);
           embedding = null;
         }
 

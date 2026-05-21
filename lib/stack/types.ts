@@ -11,7 +11,14 @@ export interface StackSource {
   text?: string;           // optional avatar text color override (for very light bg)
   headline: string;        // this outlet's headline
   hoursAgo: number;        // computed from published_at
-  thumb: { hue: number; label: string };
+  thumb: {
+    hue: number;
+    label: string;
+    // Optional real-image URL (S3 if configured, else publisher CDN). When set,
+    // <RotatingThumb> renders an <img> over the gradient; when null the
+    // gradient + label combo is the thumbnail.
+    imageUrl?: string | null;
+  };
 }
 
 export interface StackCluster {
