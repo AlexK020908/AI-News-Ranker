@@ -1,6 +1,6 @@
 -- ai-news-feed :: consolidated initial schema
 -- Run in a Supabase project's SQL editor, or via `supabase db push`.
--- Seed data (sources + reputation) lives in ../seed/sources.sql.
+-- Seed data (sources + reputation) lives in ../seed.sql.
 
 -- 1. Extensions ----------------------------------------------------------
 
@@ -133,7 +133,7 @@ create index if not exists webhook_deliveries_item_idx
   on webhook_deliveries (item_id);
 
 -- 6. topics --------------------------------------------------------------
--- Clusters of related items computed offline by /api/cron/cluster-topics and
+-- Clusters of related items computed offline by /api/jobs/cluster-topics and
 -- surfaced as browsable entities: "Reasoning models · 7 items this week".
 
 create table if not exists topics (
@@ -146,7 +146,7 @@ create table if not exists topics (
   max_importance  integer,
   trending_score  float not null default 0,
   centroid        vector(1024),
-  -- Stable signature of sorted member IDs; lets the cron skip re-labeling an
+  -- Stable signature of sorted member IDs; lets the job skip re-labeling an
   -- unchanged cluster on the next run.
   member_hash     text,
   first_seen_at   timestamptz not null default now(),
@@ -276,7 +276,7 @@ as $$
    limit match_count;
 $$;
 
--- Atomic, weight-aware dup bump. Called from /api/cron/enrich after marking a
+-- Atomic, weight-aware dup bump. Called from /api/jobs/enrich after marking a
 -- new item as a duplicate of canonical_id. dup_weight comes from the source's
 -- reputation so primary-lab dups count more than community echoes.
 create or replace function bump_duplicate_count(

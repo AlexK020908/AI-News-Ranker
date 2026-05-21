@@ -7,6 +7,11 @@ export interface IngestContext {
   sourceName: string;
   sourceKind: SourceKind;
   config: Record<string, unknown>;
+  // Default region for items produced by this source. Adapters can override
+  // per-item via RawIngestedItem.region.
+  region: string;
+  // Crawler adapter config; ignored by other adapters.
+  crawlConfig: Record<string, unknown>;
 }
 
 export interface AdapterResult {

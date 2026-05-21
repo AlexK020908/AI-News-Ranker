@@ -5,10 +5,16 @@ import { retentionCutoffIso } from "./retention";
 
 const INSERT_CHUNK = 100;
 
+export interface UpsertOpts {
+  // Default region for the source — applied when the item doesn't carry its own.
+  defaultRegion: string;
+}
+
 export async function upsertItems(
   supabase: SupabaseClient,
   sourceId: string,
   items: IngestRawItem[],
+  opts: UpsertOpts,
 ): Promise<{ inserted: number; skipped: number }> {
   if (items.length === 0) return { inserted: 0, skipped: 0 };
 
@@ -26,20 +32,30 @@ export async function upsertItems(
   const unique = Array.from(byUrl.values());
 
   const rows = await Promise.all(
-    unique.map(async (i) => ({
-      source_id: sourceId,
-      external_id: i.external_id,
-      url: i.url,
-      title: i.title,
-      author: i.author ?? null,
-      content: i.content ?? null,
-      content_hash: await sha256Hex(
-        [i.title, i.url, (i.content ?? "").slice(0, 2000)].join("\x1f"),
-      ),
-      published_at: i.published_at ?? null,
-      engagement_score: i.engagement_score ?? 0,
-      raw: i.raw ?? {},
-    })),
+    unique.map(async (i) => {
+      // Carry the thumbnail candidate through `raw` so the enrich step can find
+      // it without a separate column. Schema stays minimal.
+      const raw: Record<string, unknown> = { ...(i.raw ?? {}) };
+      if (i.thumbnail_candidate_url) {
+        raw.thumbnail_candidate_url = i.thumbnail_candidate_url;
+      }
+      return {
+        source_id: sourceId,
+        external_id: i.external_id,
+        url: i.url,
+        title: i.title,
+        author: i.author ?? null,
+        content: i.content ?? null,
+        content_hash: await sha256Hex(
+          [i.title, i.url, (i.content ?? "").slice(0, 2000)].join("\x1f"),
+        ),
+        published_at: i.published_at ?? null,
+        engagement_score: i.engagement_score ?? 0,
+        raw,
+        region: i.region ?? opts.defaultRegion,
+        xml: i.xml ?? null,
+      };
+    }),
   );
 
   let inserted = 0;

@@ -21,13 +21,13 @@
   while ($true) {
     $ts = Get-Date -Format "HH:mm:ss"
     Write-Host "[$ts] ingest..." -NoNewline
-    $ing = Hit "/api/cron/ingest"
+    $ing = Hit "/api/jobs/ingest"
     if ($ing) {
       Write-Host " inserted=$($ing.summary.inserted) pruned=$($ing.summary.pruned)"
     } else { Write-Host "" }
 
     Write-Host "[$ts] enrich..." -NoNewline
-    $enr = Hit "/api/cron/enrich"
+    $enr = Hit "/api/jobs/enrich"
     if ($enr) {
       Write-Host " batch=$($enr.batch) enriched=$($enr.enriched) failed=$($enr.failed)"
     } else { Write-Host "" }

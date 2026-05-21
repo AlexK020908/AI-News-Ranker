@@ -5,6 +5,7 @@ import { arxivAdapter } from "./arxiv";
 import { githubTrendingAdapter } from "./github-trending";
 import { hackernewsAdapter } from "./hackernews";
 import { huggingfaceModelsAdapter, huggingfaceDatasetsAdapter } from "./huggingface";
+import { crawlerAdapter } from "./crawler";
 
 export const adapters: Partial<Record<SourceKind, Adapter>> = {
   rss: rssAdapter,
@@ -14,4 +15,5 @@ export const adapters: Partial<Record<SourceKind, Adapter>> = {
   hackernews: hackernewsAdapter,
   huggingface_models: huggingfaceModelsAdapter,
   huggingface_datasets: huggingfaceDatasetsAdapter,
+  crawler: crawlerAdapter,
 };

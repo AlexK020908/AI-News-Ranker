@@ -1,3 +1,5 @@
+export const DEFAULT_REGION = "global";
+
 export function isCategory(x: unknown): x is Category {
   return typeof x === "string" && (CATEGORIES as readonly string[]).includes(x);
 }
@@ -39,6 +41,7 @@ export const SOURCE_KINDS = [
   "reddit",
   "huggingface_models",
   "huggingface_datasets",
+  "crawler",
   "custom",
 ] as const;
 
@@ -53,6 +56,8 @@ export interface Source {
   poll_interval_sec: number;
   enabled: boolean;
   reputation_weight: number;
+  region: string;
+  crawl_config: Record<string, unknown>;
   last_polled_at: string | null;
   last_error: string | null;
   created_at: string;
@@ -85,6 +90,12 @@ export interface Item {
   enriched_at: string | null;
   enrich_error: string | null;
   raw: Record<string, unknown> | null;
+  // Optional in the type because most SELECT queries don't request them.
+  // When loaded from a query that includes them, region defaults to 'global'
+  // server-side; xml and s3_storage_id are null until populated.
+  region?: string;
+  xml?: string | null;
+  s3_storage_id?: string | null;
 }
 
 export interface ItemWithSource extends Item {
@@ -154,4 +165,12 @@ export interface RawIngestedItem {
   published_at?: string | null;
   engagement_score?: number;
   raw?: Record<string, unknown>;
+  // Per-item raw XML (or XML-serialized equivalent for non-RSS sources). Stored
+  // inline on items.xml so we have the original payload for reprocessing.
+  xml?: string | null;
+  // Region override. If unset, the source's default region is used.
+  region?: string | null;
+  // Candidate thumbnail URL discovered during ingest (RSS enclosure, media:thumbnail).
+  // The enrich step downloads and uploads to S3 → items.s3_storage_id.
+  thumbnail_candidate_url?: string | null;
 }

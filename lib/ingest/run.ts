@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Source } from "@/lib/types";
+import { DEFAULT_REGION, type Source } from "@/lib/types";
 import { runPool } from "@/lib/utils";
 import { adapters } from "./registry";
 import { upsertItems } from "./write";
@@ -29,18 +29,23 @@ export async function runIngestionForSource(
   if (!adapter) {
     return empty(source.slug, `no adapter for kind=${source.kind}`, started);
   }
+  const region = source.region ?? DEFAULT_REGION;
   try {
     const result = await adapter({
       sourceSlug: source.slug,
       sourceName: source.name,
       sourceKind: source.kind,
       config: (source.config ?? {}) as Record<string, unknown>,
+      region,
+      crawlConfig: (source.crawl_config ?? {}) as Record<string, unknown>,
     });
     if (result.error && result.items.length === 0) {
       await markPolled(supabase, source.id, result.error);
       return empty(source.slug, result.error, started);
     }
-    const { inserted, skipped } = await upsertItems(supabase, source.id, result.items);
+    const { inserted, skipped } = await upsertItems(supabase, source.id, result.items, {
+      defaultRegion: region,
+    });
     await markPolled(supabase, source.id, result.error ?? null);
     return {
       sourceSlug: source.slug,
@@ -84,7 +89,9 @@ export async function runIngestionForAll(
 
   let query = supabase
     .from("sources")
-    .select("id, slug, name, kind, config, poll_interval_sec, enabled, last_polled_at, last_error, created_at")
+    .select(
+      "id, slug, name, kind, config, poll_interval_sec, enabled, reputation_weight, region, crawl_config, last_polled_at, last_error, created_at",
+    )
     .eq("enabled", true)
     .order("slug");
   if (opts.onlySlugs?.length) query = query.in("slug", opts.onlySlugs);

@@ -175,7 +175,7 @@ export function vectorNorm(a: readonly number[]): number {
 }
 
 export function memberHash(memberIds: readonly string[]): string {
-  // Stable signature so the cron can detect unchanged clusters and skip
+  // Stable signature so the job can detect unchanged clusters and skip
   // re-labeling. Not cryptographic — identity-only.
   return [...memberIds].sort().join("|");
 }
