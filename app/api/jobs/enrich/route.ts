@@ -310,18 +310,25 @@ async function resolveThumbnailFor(r: UnenrichedRow): Promise<ThumbnailResolutio
     return { s3Key: null, derivedCandidateUrl: derived, attempted: false };
   }
   try {
-    const uploaded = await storage.uploadThumbnail(candidate, {
+    const result = await storage.uploadThumbnail(candidate, {
       region: r.region || DEFAULT_REGION,
       sourceSlug: r.source.slug,
       externalId: r.external_id,
     });
-    if (uploaded?.key) {
-      return { s3Key: uploaded.key, derivedCandidateUrl: derived, attempted: false };
+    if (result.outcome === "uploaded" && result.thumbnail) {
+      return {
+        s3Key: result.thumbnail.key,
+        derivedCandidateUrl: derived,
+        attempted: false,
+      };
     }
-    // Upload returned null — fetch 404, oversized, non-image, etc. The
-    // candidate URL is not recoverable, so mark attempted.
-    return { s3Key: null, derivedCandidateUrl: derived, attempted: true };
+    // Only "permanent" failures (404, oversize, non-image, decode-fail) get
+    // dead-lettered. Transient (429, 5xx, network) leave the row pickable
+    // by the next backfill run.
+    const attempted = result.outcome === "permanent";
+    return { s3Key: null, derivedCandidateUrl: derived, attempted };
   } catch {
-    return { s3Key: null, derivedCandidateUrl: derived, attempted: true };
+    // Unexpected exception from the storage layer — treat as transient.
+    return { s3Key: null, derivedCandidateUrl: derived, attempted: false };
   }
 }

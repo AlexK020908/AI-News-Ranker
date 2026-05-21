@@ -27,12 +27,27 @@ export interface UploadedThumbnail {
   byteLength: number;
 }
 
+// Outcome categories for a thumbnail upload attempt:
+//   - "uploaded": success; caller writes key to items.s3_storage_id
+//   - "transient": rate-limit, 5xx, network timeout — caller should NOT
+//                  dead-letter; the next backfill round will retry
+//   - "permanent": 404, oversize, non-image content-type, processing fail —
+//                  caller dead-letters via raw.thumbnail_attempted_at so the
+//                  row stops cycling through future backfills
+export type UploadOutcome = "uploaded" | "transient" | "permanent";
+
+export interface UploadResult {
+  outcome: UploadOutcome;
+  thumbnail?: UploadedThumbnail;
+  reason: string;
+}
+
 export interface Storage {
   enabled: boolean;
   uploadThumbnail(
     sourceUrl: string,
     opts: { region: string; sourceSlug: string; externalId: string },
-  ): Promise<UploadedThumbnail | null>;
+  ): Promise<UploadResult>;
   // Build the public URL for an existing key — used by render paths so we don't
   // need to store the URL separately if the bucket policy is public.
   publicUrl(key: string): string | null;
@@ -41,12 +56,67 @@ export interface Storage {
 const NOOP: Storage = {
   enabled: false,
   async uploadThumbnail() {
-    return null;
+    return { outcome: "transient", reason: "no bucket configured" };
   },
   publicUrl() {
     return null;
   },
 };
+
+// Per-host pacing for hosts that rate-limit aggressively. opengraph.github
+// assets.com caps at ~100 req/min — 850ms between calls keeps us at ~70/min
+// with comfortable headroom. Other hosts go unthrottled.
+const HOST_MIN_INTERVAL_MS: Record<string, number> = {
+  "opengraph.githubassets.com": 850,
+};
+
+// Per-host promise chain. Each new caller chains its work onto the previous
+// caller's lock, and the lock is released minMs after the fetch starts so
+// the next caller sees that gap. Process-local — fine for a single Next.js
+// runtime, would need a shared store under multi-instance deploys.
+const hostChains = new Map<string, Promise<void>>();
+
+async function throttleForHost(host: string | null): Promise<void> {
+  if (!host) return;
+  const minMs = HOST_MIN_INTERVAL_MS[host];
+  if (!minMs) return;
+  const prev = hostChains.get(host) ?? Promise.resolve();
+  let release: (() => void) | null = null;
+  const mine = new Promise<void>((r) => {
+    release = r;
+  });
+  hostChains.set(host, mine);
+  await prev;
+  // Hold the lock for minMs after acquisition so the next caller waits that
+  // long before its fetch starts. release is assigned synchronously in the
+  // Promise executor above, so the non-null assertion is safe.
+  setTimeout(() => release!(), minMs);
+}
+
+function hostnameOf(url: string): string | null {
+  try {
+    return new URL(url).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+function parseRetryAfterMs(value: string | null): number {
+  if (!value) return 5_000;
+  const secs = Number(value);
+  if (Number.isFinite(secs)) return clamp(secs * 1000, 1_000, 60_000);
+  const date = Date.parse(value);
+  if (!Number.isNaN(date)) return clamp(date - Date.now(), 1_000, 60_000);
+  return 5_000;
+}
+
+function clamp(n: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, n));
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
 
 let cached: Storage | null = null;
 
@@ -179,6 +249,69 @@ async function processImage(
   }
 }
 
+// Source-fetch result, with the categorization needed by the caller to
+// decide whether to dead-letter.
+type SourceFetchResult =
+  | { kind: "ok"; body: ArrayBuffer; contentType: string }
+  | { kind: "transient"; reason: string }
+  | { kind: "permanent"; reason: string };
+
+async function fetchSourceWithRetry(sourceUrl: string): Promise<SourceFetchResult> {
+  const host = hostnameOf(sourceUrl);
+
+  const doFetch = async (): Promise<Response> => {
+    await throttleForHost(host);
+    return fetch(sourceUrl, {
+      signal: AbortSignal.timeout(20_000),
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        Accept: "image/avif,image/webp,image/png,image/jpeg,image/*;q=0.8,*/*;q=0.5",
+      },
+      redirect: "follow",
+    });
+  };
+
+  let resp: Response;
+  try {
+    resp = await doFetch();
+    // One retry on 429, honoring Retry-After. If the second call also 429s,
+    // call it transient — the next backfill round will pick it up.
+    if (resp.status === 429) {
+      const wait = parseRetryAfterMs(resp.headers.get("retry-after"));
+      console.warn(`[storage] 429 from ${host ?? "?"}; sleeping ${wait}ms before retry`);
+      await sleep(wait);
+      resp = await doFetch();
+    }
+  } catch (e) {
+    return { kind: "transient", reason: `fetch failed: ${(e as Error).message}` };
+  }
+
+  if (resp.status === 429) {
+    return { kind: "transient", reason: "429 after retry" };
+  }
+  if (resp.status >= 500) {
+    return { kind: "transient", reason: `HTTP ${resp.status}` };
+  }
+  if (!resp.ok) {
+    return { kind: "permanent", reason: `HTTP ${resp.status}` };
+  }
+  const contentType = resp.headers.get("content-type") || "image/jpeg";
+  if (!contentType.startsWith("image/")) {
+    return { kind: "permanent", reason: `non-image content-type ${contentType}` };
+  }
+  let body: ArrayBuffer;
+  try {
+    body = await resp.arrayBuffer();
+  } catch (e) {
+    return { kind: "transient", reason: `body read failed: ${(e as Error).message}` };
+  }
+  if (body.byteLength > MAX_SOURCE_BYTES) {
+    return { kind: "permanent", reason: `source too large (${body.byteLength}b)` };
+  }
+  return { kind: "ok", body, contentType };
+}
+
 function makeS3Storage(deps: S3Deps): Storage {
   return {
     enabled: true,
@@ -186,42 +319,18 @@ function makeS3Storage(deps: S3Deps): Storage {
       return `${deps.publicBase}/${encodeURI(key)}`;
     },
     async uploadThumbnail(sourceUrl, { region, sourceSlug, externalId }) {
-      let raw: ArrayBuffer;
-      let sourceContentType: string;
-      try {
-        // Some publisher CDNs are slow and/or block scraper-y user agents.
-        // 20s timeout + browser UA covers the common cases; thumbnails that
-        // still fail get logged with the URL so they're easy to investigate.
-        const resp = await fetch(sourceUrl, {
-          signal: AbortSignal.timeout(20_000),
-          headers: {
-            "User-Agent":
-              "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            Accept: "image/avif,image/webp,image/png,image/jpeg,image/*;q=0.8,*/*;q=0.5",
-          },
-          redirect: "follow",
-        });
-        if (!resp.ok) {
-          console.warn(`[storage] thumbnail fetch ${resp.status} for ${sourceUrl}`);
-          return null;
-        }
-        sourceContentType = resp.headers.get("content-type") || "image/jpeg";
-        if (!sourceContentType.startsWith("image/")) {
-          console.warn(`[storage] non-image content-type ${sourceContentType} for ${sourceUrl}`);
-          return null;
-        }
-        raw = await resp.arrayBuffer();
-        if (raw.byteLength > MAX_SOURCE_BYTES) {
-          console.warn(`[storage] source too large (${raw.byteLength}b) for ${sourceUrl}`);
-          return null;
-        }
-      } catch (e) {
-        console.warn(`[storage] thumbnail fetch failed (${sourceUrl}): ${(e as Error).message}`);
-        return null;
+      const fetched = await fetchSourceWithRetry(sourceUrl);
+      if (fetched.kind !== "ok") {
+        console.warn(`[storage] thumbnail ${fetched.kind} for ${sourceUrl}: ${fetched.reason}`);
+        return { outcome: fetched.kind, reason: fetched.reason };
       }
 
-      const processed = await processImage(raw, sourceContentType, sourceUrl);
-      if (!processed) return null;
+      const processed = await processImage(fetched.body, fetched.contentType, sourceUrl);
+      if (!processed) {
+        // Image-decode / resize failures are usually malformed-source —
+        // permanent. (sharp init failures are caught higher up.)
+        return { outcome: "permanent", reason: "image processing failed" };
+      }
 
       const safeId = externalId.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 120);
       const key = `thumbs/${region}/${sourceSlug}/${safeId}.${processed.ext}`;
@@ -237,15 +346,22 @@ function makeS3Storage(deps: S3Deps): Storage {
       try {
         await deps.client.send(new deps.PutObjectCommand(input));
       } catch (e) {
-        console.warn(`[storage] s3 put failed: ${(e as Error).message}`);
-        return null;
+        // S3-side failures are typically transient (network blip, throttling,
+        // signature drift on credential rotation). Don't dead-letter.
+        const reason = `s3 put failed: ${(e as Error).message}`;
+        console.warn(`[storage] ${reason}`);
+        return { outcome: "transient", reason };
       }
 
       return {
-        key,
-        url: `${deps.publicBase}/${encodeURI(key)}`,
-        contentType: processed.contentType,
-        byteLength: processed.body.byteLength,
+        outcome: "uploaded",
+        reason: "ok",
+        thumbnail: {
+          key,
+          url: `${deps.publicBase}/${encodeURI(key)}`,
+          contentType: processed.contentType,
+          byteLength: processed.body.byteLength,
+        },
       };
     },
   };
