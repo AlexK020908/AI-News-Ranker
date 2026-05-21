@@ -46,6 +46,10 @@ interface UnenrichedRow {
 interface ThumbnailResolution {
   s3Key: string | null;
   derivedCandidateUrl: string | null;
+  // True when we ran the full pipeline (derive + upload, where applicable)
+  // and ended up without an s3Key — used to mark the row as exhausted so
+  // backfill runs don't keep retrying broken URLs or 404'd CDN paths.
+  attempted: boolean;
 }
 
 export async function GET(req: NextRequest) {
@@ -133,15 +137,8 @@ export async function GET(req: NextRequest) {
 
         const thumb = await thumbnailPromise;
         if (thumb.s3Key) update.s3_storage_id = thumb.s3Key;
-        if (thumb.derivedCandidateUrl) {
-          // Persist the URL we just derived from og:image / GitHub OG into raw
-          // so the frontend thumb_url fallback works even if S3 isn't configured
-          // and so a future re-run doesn't refetch the article HTML.
-          update.raw = {
-            ...(r.raw ?? {}),
-            thumbnail_candidate_url: thumb.derivedCandidateUrl,
-          };
-        }
+        const rawPatch = buildRawPatch(r.raw, thumb);
+        if (rawPatch) update.raw = rawPatch;
 
         // Semantic Scholar enrichment for arXiv papers (non-fatal).
         const arxivId = extractArxivId(r.url);
@@ -187,9 +184,10 @@ export const POST = GET;
 async function runThumbnailBackfill(limit: number): Promise<Response> {
   try {
     const supabase = createSupabaseServiceClient();
-    // Target enriched-but-thumbnailless rows. We pull rows missing s3_storage_id;
-    // resolveThumbnailFor() will also be a no-op for rows that already have a
-    // candidate URL in raw when S3 is unset, so this is safe to run repeatedly.
+    // Target enriched-but-thumbnailless rows that we haven't already tried.
+    // The `raw->>thumbnail_attempted_at` filter is what stops 404s and
+    // oversized URLs from cycling forever — once we've tried and failed,
+    // the row is excluded from future backfill batches.
     const { data, error } = await supabase
       .from("items")
       .select(
@@ -198,6 +196,7 @@ async function runThumbnailBackfill(limit: number): Promise<Response> {
       .not("enriched_at", "is", null)
       .is("s3_storage_id", null)
       .is("duplicate_of", null)
+      .filter("raw->>thumbnail_attempted_at", "is", null)
       .order("ingested_at", { ascending: false })
       .limit(limit);
 
@@ -209,17 +208,13 @@ async function runThumbnailBackfill(limit: number): Promise<Response> {
 
     await runPool(rows, CONCURRENCY, async (r) => {
       const thumb = await resolveThumbnailFor(r);
-      if (!thumb.s3Key && !thumb.derivedCandidateUrl) {
-        skipped++;
-        return;
-      }
       const patch: Record<string, unknown> = {};
       if (thumb.s3Key) patch.s3_storage_id = thumb.s3Key;
-      if (thumb.derivedCandidateUrl) {
-        patch.raw = {
-          ...(r.raw ?? {}),
-          thumbnail_candidate_url: thumb.derivedCandidateUrl,
-        };
+      const rawPatch = buildRawPatch(r.raw, thumb);
+      if (rawPatch) patch.raw = rawPatch;
+      if (Object.keys(patch).length === 0) {
+        skipped++;
+        return;
       }
       const { error: uErr } = await supabase.from("items").update(patch).eq("id", r.id);
       if (uErr) {
@@ -234,6 +229,23 @@ async function runThumbnailBackfill(limit: number): Promise<Response> {
   } catch (e) {
     return Response.json({ ok: false, error: (e as Error).message }, { status: 500 });
   }
+}
+
+// Combine the row's existing raw with derived URL and/or dead-letter marker.
+// Returns null when there's nothing to write (no derived URL, not attempted).
+function buildRawPatch(
+  existingRaw: Record<string, unknown> | null,
+  thumb: ThumbnailResolution,
+): Record<string, unknown> | null {
+  if (!thumb.derivedCandidateUrl && !thumb.attempted) return null;
+  const patch: Record<string, unknown> = { ...(existingRaw ?? {}) };
+  if (thumb.derivedCandidateUrl) {
+    patch.thumbnail_candidate_url = thumb.derivedCandidateUrl;
+  }
+  if (thumb.attempted) {
+    patch.thumbnail_attempted_at = new Date().toISOString();
+  }
+  return patch;
 }
 
 function rawThumbnailCandidate(raw: Record<string, unknown> | null): string | null {
@@ -273,7 +285,9 @@ async function deriveCandidate(r: UnenrichedRow): Promise<string | null> {
 
 async function resolveThumbnailFor(r: UnenrichedRow): Promise<ThumbnailResolution> {
   // Already uploaded — nothing to do.
-  if (r.s3_storage_id) return { s3Key: null, derivedCandidateUrl: null };
+  if (r.s3_storage_id) {
+    return { s3Key: null, derivedCandidateUrl: null, attempted: false };
+  }
 
   const existing = rawThumbnailCandidate(r.raw);
   let candidate = existing;
@@ -282,14 +296,18 @@ async function resolveThumbnailFor(r: UnenrichedRow): Promise<ThumbnailResolutio
     derived = await deriveCandidate(r);
     candidate = derived;
   }
-  if (!candidate) return { s3Key: null, derivedCandidateUrl: null };
+  if (!candidate) {
+    // We tried to derive and got nothing — mark attempted so we don't
+    // re-scrape the article HTML next backfill.
+    return { s3Key: null, derivedCandidateUrl: null, attempted: true };
+  }
 
   const storage = getStorage();
   if (!storage.enabled) {
-    // No bucket — but we still want the derived URL persisted so the frontend
-    // thumb_url fallback can use it. (If `existing` was already in raw, no
-    // need to rewrite it.)
-    return { s3Key: null, derivedCandidateUrl: derived };
+    // No bucket — store the derived URL (if any) so the frontend's thumb_url
+    // fallback can use it, but don't mark attempted: if S3 gets enabled later
+    // we want this row to be retried.
+    return { s3Key: null, derivedCandidateUrl: derived, attempted: false };
   }
   try {
     const uploaded = await storage.uploadThumbnail(candidate, {
@@ -297,8 +315,13 @@ async function resolveThumbnailFor(r: UnenrichedRow): Promise<ThumbnailResolutio
       sourceSlug: r.source.slug,
       externalId: r.external_id,
     });
-    return { s3Key: uploaded?.key ?? null, derivedCandidateUrl: derived };
+    if (uploaded?.key) {
+      return { s3Key: uploaded.key, derivedCandidateUrl: derived, attempted: false };
+    }
+    // Upload returned null — fetch 404, oversized, non-image, etc. The
+    // candidate URL is not recoverable, so mark attempted.
+    return { s3Key: null, derivedCandidateUrl: derived, attempted: true };
   } catch {
-    return { s3Key: null, derivedCandidateUrl: derived };
+    return { s3Key: null, derivedCandidateUrl: derived, attempted: true };
   }
 }
