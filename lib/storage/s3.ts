@@ -1,11 +1,24 @@
 // S3-compatible thumbnail storage (AWS / R2 / MinIO).
 // Stores ONLY thumbnails — raw XML lives inline on items.xml.
 // No-op fallback when S3_BUCKET is unset.
+//
+// On upload, source images are resized through sharp to a max of 800px wide
+// and re-encoded as WebP (q80). Publishers often serve full-resolution hero
+// images (10–25MB JPEGs); storing those as-is would waste S3 bytes and ship
+// huge payloads to the frontend for a card thumbnail. SVGs bypass the
+// processing step — they're already vector + small.
 
 import type {
   S3Client as AwsS3Client,
   PutObjectCommandInput,
 } from "@aws-sdk/client-s3";
+
+// Source bytes we'll accept before refusing the upload. Resize makes the
+// stored object small, but we still need to hold the source in memory while
+// sharp runs.
+const MAX_SOURCE_BYTES = 25_000_000;
+const TARGET_WIDTH_PX = 800;
+const TARGET_QUALITY = 80;
 
 export interface UploadedThumbnail {
   key: string;       // S3 object key, stored in items.s3_storage_id
@@ -90,6 +103,82 @@ interface S3Deps {
   PutObjectCommand: typeof import("@aws-sdk/client-s3").PutObjectCommand;
 }
 
+// Cached sharp module — native dep, loaded lazily once. sharp uses
+// `export = sharp` (CommonJS), so it's loaded via require to match how the
+// AWS SDK is handled above.
+type SharpFactory = typeof import("sharp");
+let sharpFactory: SharpFactory | null = null;
+let sharpLoadFailed = false;
+
+function getSharp(): SharpFactory | null {
+  if (sharpFactory) return sharpFactory;
+  if (sharpLoadFailed) return null;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    sharpFactory = require("sharp") as SharpFactory;
+    return sharpFactory;
+  } catch (e) {
+    sharpLoadFailed = true;
+    console.warn(`[storage] sharp not available — uploads will skip resize: ${(e as Error).message}`);
+    return null;
+  }
+}
+
+interface ProcessedImage {
+  body: Uint8Array;
+  contentType: string;
+  ext: string;
+}
+
+async function processImage(
+  raw: ArrayBuffer,
+  sourceContentType: string,
+  sourceUrl: string,
+): Promise<ProcessedImage | null> {
+  // SVGs are already small + vector; storing them as-is preserves crispness
+  // at every zoom level, where rasterizing to WebP would hurt.
+  if (sourceContentType.includes("svg")) {
+    return { body: new Uint8Array(raw), contentType: "image/svg+xml", ext: "svg" };
+  }
+
+  const sharp = getSharp();
+  if (!sharp) {
+    // No sharp available — store the original, but only if it's small enough
+    // that we don't want to ship a 20MB JPEG to the frontend.
+    if (raw.byteLength > 2_000_000) {
+      console.warn(
+        `[storage] sharp unavailable and source too large to store as-is (${raw.byteLength}b) for ${sourceUrl}`,
+      );
+      return null;
+    }
+    return {
+      body: new Uint8Array(raw),
+      contentType: sourceContentType,
+      ext: guessExt(sourceContentType),
+    };
+  }
+
+  try {
+    const processed = await sharp(Buffer.from(raw), { animated: false })
+      .rotate() // honor EXIF orientation before resizing
+      .resize({
+        width: TARGET_WIDTH_PX,
+        withoutEnlargement: true,
+        fit: "inside",
+      })
+      .webp({ quality: TARGET_QUALITY })
+      .toBuffer();
+    return {
+      body: new Uint8Array(processed),
+      contentType: "image/webp",
+      ext: "webp",
+    };
+  } catch (e) {
+    console.warn(`[storage] sharp processing failed for ${sourceUrl}: ${(e as Error).message}`);
+    return null;
+  }
+}
+
 function makeS3Storage(deps: S3Deps): Storage {
   return {
     enabled: true,
@@ -97,8 +186,8 @@ function makeS3Storage(deps: S3Deps): Storage {
       return `${deps.publicBase}/${encodeURI(key)}`;
     },
     async uploadThumbnail(sourceUrl, { region, sourceSlug, externalId }) {
-      let body: ArrayBuffer;
-      let contentType: string;
+      let raw: ArrayBuffer;
+      let sourceContentType: string;
       try {
         // Some publisher CDNs are slow and/or block scraper-y user agents.
         // 20s timeout + browser UA covers the common cases; thumbnails that
@@ -116,14 +205,14 @@ function makeS3Storage(deps: S3Deps): Storage {
           console.warn(`[storage] thumbnail fetch ${resp.status} for ${sourceUrl}`);
           return null;
         }
-        contentType = resp.headers.get("content-type") || "image/jpeg";
-        if (!contentType.startsWith("image/")) {
-          console.warn(`[storage] non-image content-type ${contentType} for ${sourceUrl}`);
+        sourceContentType = resp.headers.get("content-type") || "image/jpeg";
+        if (!sourceContentType.startsWith("image/")) {
+          console.warn(`[storage] non-image content-type ${sourceContentType} for ${sourceUrl}`);
           return null;
         }
-        body = await resp.arrayBuffer();
-        if (body.byteLength > 4_000_000) {
-          console.warn(`[storage] thumbnail too large (${body.byteLength}b) for ${sourceUrl}`);
+        raw = await resp.arrayBuffer();
+        if (raw.byteLength > MAX_SOURCE_BYTES) {
+          console.warn(`[storage] source too large (${raw.byteLength}b) for ${sourceUrl}`);
           return null;
         }
       } catch (e) {
@@ -131,15 +220,17 @@ function makeS3Storage(deps: S3Deps): Storage {
         return null;
       }
 
-      const safeExt = guessExt(contentType);
+      const processed = await processImage(raw, sourceContentType, sourceUrl);
+      if (!processed) return null;
+
       const safeId = externalId.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 120);
-      const key = `thumbs/${region}/${sourceSlug}/${safeId}.${safeExt}`;
+      const key = `thumbs/${region}/${sourceSlug}/${safeId}.${processed.ext}`;
 
       const input: PutObjectCommandInput = {
         Bucket: deps.bucket,
         Key: key,
-        Body: new Uint8Array(body),
-        ContentType: contentType,
+        Body: processed.body,
+        ContentType: processed.contentType,
         CacheControl: "public, max-age=86400, immutable",
       };
 
@@ -153,8 +244,8 @@ function makeS3Storage(deps: S3Deps): Storage {
       return {
         key,
         url: `${deps.publicBase}/${encodeURI(key)}`,
-        contentType,
-        byteLength: body.byteLength,
+        contentType: processed.contentType,
+        byteLength: processed.body.byteLength,
       };
     },
   };
