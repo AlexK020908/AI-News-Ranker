@@ -3,29 +3,27 @@
 # s3_storage_id is null, deriving the thumbnail URL from GitHub OG (for repo
 # rows) or by scraping og:image from the publisher's page.
 #
-# Usage:
-#   $env:JOB_TOKEN   = "<token>"
-#   $env:APP_BASE_URL = "http://localhost:3000"   # optional, defaults to localhost
-#   .\scripts\backfill-thumbs.ps1
+# Usage:  powershell -ExecutionPolicy Bypass -File .\scripts\backfill-thumbs.ps1
 #
 # Optional flags:
-#   -BatchSize <int>   how many rows per round (default 50, max 100)
-#   -MaxRounds <int>   safety cap (default 50)
+#   -BaseUrl   <url>    target host (default http://localhost:3000)
+#   -BatchSize <int>    rows per round (default 50, server caps at 100)
+#   -MaxRounds <int>    safety cap (default 50)
+
 param(
-  [string]$BaseUrl  = $env:APP_BASE_URL,
-  [string]$Token    = $env:JOB_TOKEN,
+  [string]$BaseUrl   = "http://localhost:3000",
   [int]   $BatchSize = 50,
   [int]   $MaxRounds = 50
 )
 
-if (-not $BaseUrl) { $BaseUrl = "http://localhost:3000" }
-if (-not $Token) {
-  Write-Error "Set `$env:JOB_TOKEN or pass -Token <token>"
-  exit 1
-}
+$ErrorActionPreference = "Continue"
+
+$envFile = Join-Path $PSScriptRoot "..\.env.local"
+$secret  = (Get-Content $envFile | Where-Object { $_ -match '^CRON_SECRET=' }) -replace '^CRON_SECRET=', ''
+if (-not $secret) { throw "CRON_SECRET not found in .env.local" }
 
 $uri     = "$BaseUrl/api/jobs/enrich?backfill_thumbs=1&limit=$BatchSize"
-$headers = @{ Authorization = "Bearer $Token" }
+$headers = @{ Authorization = "Bearer $secret" }
 $total   = 0
 $rounds  = 0
 
