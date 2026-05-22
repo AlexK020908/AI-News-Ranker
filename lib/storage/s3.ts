@@ -102,20 +102,37 @@ function hostnameOf(url: string): string | null {
 }
 
 function parseRetryAfterMs(value: string | null): number {
-  if (!value) return 5_000;
+  if (!value) return 60_000;
   const secs = Number(value);
-  if (Number.isFinite(secs)) return clamp(secs * 1000, 1_000, 60_000);
+  if (Number.isFinite(secs)) return clamp(secs * 1000, 5_000, 120_000);
   const date = Date.parse(value);
-  if (!Number.isNaN(date)) return clamp(date - Date.now(), 1_000, 60_000);
-  return 5_000;
+  if (!Number.isNaN(date)) return clamp(date - Date.now(), 5_000, 120_000);
+  return 60_000;
 }
 
 function clamp(n: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, n));
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
+// Per-host circuit breaker. Once a host 429s, we stop trying that host for
+// the Retry-After window — subsequent requests within the block return
+// transient immediately instead of stacking 60s sleeps inside the route.
+// Process-local; would need a shared store under multi-instance deploys.
+const hostBlockedUntil = new Map<string, number>();
+
+function hostBlockedRemainingMs(host: string | null): number {
+  if (!host) return 0;
+  const until = hostBlockedUntil.get(host);
+  if (until === undefined) return 0;
+  return Math.max(0, until - Date.now());
+}
+
+function tripBreaker(host: string | null, ms: number): void {
+  if (!host) return;
+  const existing = hostBlockedUntil.get(host) ?? 0;
+  const until = Date.now() + ms;
+  // Don't shrink an existing block window — keep the longest pending reset.
+  if (until > existing) hostBlockedUntil.set(host, until);
 }
 
 let cached: Storage | null = null;
@@ -259,9 +276,19 @@ type SourceFetchResult =
 async function fetchSourceWithRetry(sourceUrl: string): Promise<SourceFetchResult> {
   const host = hostnameOf(sourceUrl);
 
-  const doFetch = async (): Promise<Response> => {
-    await throttleForHost(host);
-    return fetch(sourceUrl, {
+  // Circuit breaker: if this host recently 429'd, skip the network round-trip
+  // entirely. The next backfill round will pick the row up after the window
+  // resets.
+  const blockedMs = hostBlockedRemainingMs(host);
+  if (blockedMs > 0) {
+    return { kind: "transient", reason: `host blocked for ${Math.ceil(blockedMs / 1000)}s` };
+  }
+
+  await throttleForHost(host);
+
+  let resp: Response;
+  try {
+    resp = await fetch(sourceUrl, {
       signal: AbortSignal.timeout(20_000),
       headers: {
         "User-Agent":
@@ -270,25 +297,18 @@ async function fetchSourceWithRetry(sourceUrl: string): Promise<SourceFetchResul
       },
       redirect: "follow",
     });
-  };
-
-  let resp: Response;
-  try {
-    resp = await doFetch();
-    // One retry on 429, honoring Retry-After. If the second call also 429s,
-    // call it transient — the next backfill round will pick it up.
-    if (resp.status === 429) {
-      const wait = parseRetryAfterMs(resp.headers.get("retry-after"));
-      console.warn(`[storage] 429 from ${host ?? "?"}; sleeping ${wait}ms before retry`);
-      await sleep(wait);
-      resp = await doFetch();
-    }
   } catch (e) {
     return { kind: "transient", reason: `fetch failed: ${(e as Error).message}` };
   }
 
   if (resp.status === 429) {
-    return { kind: "transient", reason: "429 after retry" };
+    // Trip the breaker and bail. We don't sleep + retry in-process because
+    // that stacks up across the request pool (50 rows × 60s = 50 minutes).
+    // Letting the script loop instead spreads the work cleanly.
+    const wait = parseRetryAfterMs(resp.headers.get("retry-after"));
+    tripBreaker(host, wait);
+    console.warn(`[storage] 429 from ${host ?? "?"}; blocking host for ${Math.ceil(wait / 1000)}s`);
+    return { kind: "transient", reason: `429 (host blocked ${Math.ceil(wait / 1000)}s)` };
   }
   if (resp.status >= 500) {
     return { kind: "transient", reason: `HTTP ${resp.status}` };
