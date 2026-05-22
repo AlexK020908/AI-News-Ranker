@@ -1,6 +1,6 @@
 import type { StoryBucket, StoryMember } from "@/lib/stories";
 import type { StackCluster, StackSource } from "./types";
-import { avatarFor, hueFor } from "./sources";
+import { avatarFor, defaultThumbFor, hueFor } from "./sources";
 import { topicForCluster } from "./topics";
 import { getStorage } from "@/lib/storage/s3";
 
@@ -30,16 +30,20 @@ function thumbLabel(m: StoryMember): string {
   return trimmed.length <= 64 ? trimmed : trimmed.slice(0, 60).replace(/\s+\S*$/, "") + "…";
 }
 
-// Prefer durable S3 URL when the bucket is configured + the enrich step
-// uploaded a thumbnail. Fall back to the publisher's original CDN URL
-// captured during ingest. Returns null when neither is available — the
-// renderer then shows the design's gradient-only thumbnail.
+// Image-URL resolution order:
+//   1. S3 (durable, hotlink-safe) — set when the enrich step uploaded.
+//   2. thumb_url — original publisher CDN URL captured during ingest.
+//   3. Per-source default thumb (e.g. /source-thumbs/arxiv.svg) — used for
+//      sources whose pages don't carry per-item images (arxiv papers all
+//      look the same to og:image; HF model pages share a generic site card).
+//   4. null — the renderer falls back to the gradient + headline panel.
 function resolveImageUrl(m: StoryMember): string | null {
   if (m.s3_storage_id) {
     const url = getStorage().publicUrl(m.s3_storage_id);
     if (url) return url;
   }
-  return m.thumb_url ?? null;
+  if (m.thumb_url) return m.thumb_url;
+  return defaultThumbFor(m.source_slug);
 }
 
 function memberToSource(m: StoryMember): StackSource {

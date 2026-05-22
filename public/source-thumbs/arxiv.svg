@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 450" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#b31b1b"/>
+      <stop offset="100%" stop-color="#7a0f0f"/>
+    </linearGradient>
+  </defs>
+  <rect width="800" height="450" fill="url(#bg)"/>
+  <g fill="#ffffff">
+    <text x="400" y="240" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-style="italic" font-size="140" font-weight="700">arXiv</text>
+    <text x="400" y="305" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="22" font-weight="500" letter-spacing="6" fill-opacity="0.85">RESEARCH PAPER</text>
+  </g>
+</svg>

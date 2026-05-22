@@ -107,3 +107,25 @@ export function hueFor(slug: string): number {
   if (brand) return brand.hue;
   return hash(slug) % 360;
 }
+
+// Per-source default thumbnail. Used as the final fallback in resolveImageUrl
+// when neither s3_storage_id nor thumb_url is available — e.g. arxiv abstract
+// pages serve only a logo as og:image, so every paper would otherwise render
+// as a gradient panel with no imagery. Files live in /public/source-thumbs/.
+//
+// Add new entries here; SVGs in public/source-thumbs/ are intentionally
+// simple wordmarks and can be replaced with real brand assets without
+// touching code.
+const DEFAULT_THUMBS: Array<{ match: (slug: string) => boolean; url: string }> = [
+  { match: (s) => s.startsWith("arxiv-"), url: "/source-thumbs/arxiv.svg" },
+  { match: (s) => s === "hf-models-trending" || s === "hf-datasets-trending", url: "/source-thumbs/huggingface.svg" },
+  { match: (s) => s === "simon-willison", url: "/source-thumbs/simon-willison.svg" },
+  { match: (s) => s === "stratechery", url: "/source-thumbs/stratechery.svg" },
+];
+
+export function defaultThumbFor(slug: string): string | null {
+  for (const entry of DEFAULT_THUMBS) {
+    if (entry.match(slug)) return entry.url;
+  }
+  return null;
+}
