@@ -257,6 +257,16 @@ on conflict (slug) do update set
   poll_interval_sec = excluded.poll_interval_sec,
   enabled           = true;
 
+-- ============== Crawler config relocation ==============
+-- The single INSERT above stashes crawler JSON in `config` for compactness,
+-- but the crawler adapter (lib/ingest/crawler.ts) reads from `crawl_config`.
+-- Move it. Idempotent on re-run, since `config` is re-populated by the ON
+-- CONFLICT clause and then moved again here.
+update sources
+  set crawl_config = config,
+      config       = '{}'::jsonb
+  where kind = 'crawler';
+
 -- ============== Disables ==============
 
 -- Original-seed dead slugs: publishers removed their RSS. Force-disabled so
