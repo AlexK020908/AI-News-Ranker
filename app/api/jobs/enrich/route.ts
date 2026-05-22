@@ -50,7 +50,20 @@ interface ThumbnailResolution {
   // and ended up without an s3Key — used to mark the row as exhausted so
   // backfill runs don't keep retrying broken URLs or 404'd CDN paths.
   attempted: boolean;
+  // When set, replaces raw.thumbnail_transient_count on the row. Each real
+  // transient failure increments this; once it hits MAX_TRANSIENT_ATTEMPTS,
+  // resolveThumbnailFor also sets attempted=true so the row drops out of
+  // backfill. "blocked" (breaker skip) does not bump the counter — nothing
+  // was actually tried.
+  transientCount?: number;
 }
+
+// Cap for how many real transient failures a single row can rack up before
+// we give up. 3 is enough to ride out a flaky CDN or a brief S3 hiccup, and
+// keeps the backfill from looping forever on a row whose source URL is
+// permanently broken in a way that masquerades as transient (TLS error,
+// slow loris, connection reset).
+const MAX_TRANSIENT_ATTEMPTS = 3;
 
 export async function GET(req: NextRequest) {
   if (!isAuthorizedJob(req)) {
@@ -256,16 +269,25 @@ async function runThumbnailBackfill(limit: number): Promise<Response> {
   }
 }
 
-// Combine the row's existing raw with derived URL and/or dead-letter marker.
-// Returns null when there's nothing to write (no derived URL, not attempted).
+// Combine the row's existing raw with derived URL, retry counter, and/or
+// dead-letter marker. Returns null when nothing needs to be written.
 function buildRawPatch(
   existingRaw: Record<string, unknown> | null,
   thumb: ThumbnailResolution,
 ): Record<string, unknown> | null {
-  if (!thumb.derivedCandidateUrl && !thumb.attempted) return null;
+  if (
+    !thumb.derivedCandidateUrl &&
+    !thumb.attempted &&
+    thumb.transientCount === undefined
+  ) {
+    return null;
+  }
   const patch: Record<string, unknown> = { ...(existingRaw ?? {}) };
   if (thumb.derivedCandidateUrl) {
     patch.thumbnail_candidate_url = thumb.derivedCandidateUrl;
+  }
+  if (thumb.transientCount !== undefined) {
+    patch.thumbnail_transient_count = thumb.transientCount;
   }
   if (thumb.attempted) {
     patch.thumbnail_attempted_at = new Date().toISOString();
@@ -277,6 +299,12 @@ function rawThumbnailCandidate(raw: Record<string, unknown> | null): string | nu
   if (!raw || typeof raw !== "object") return null;
   const v = (raw as Record<string, unknown>).thumbnail_candidate_url;
   return typeof v === "string" && v.trim() ? v.trim() : null;
+}
+
+function rawTransientCount(raw: Record<string, unknown> | null): number {
+  if (!raw || typeof raw !== "object") return 0;
+  const v = (raw as Record<string, unknown>).thumbnail_transient_count;
+  return typeof v === "number" && v >= 0 ? Math.floor(v) : 0;
 }
 
 // Skip sources where fetching the page for og:image is wasteful or hostile:
@@ -347,13 +375,35 @@ async function resolveThumbnailFor(r: UnenrichedRow): Promise<ThumbnailResolutio
         attempted: false,
       };
     }
-    // Only "permanent" failures (404, oversize, non-image, decode-fail) get
-    // dead-lettered. Transient (429, 5xx, network) leave the row pickable
-    // by the next backfill run.
-    const attempted = result.outcome === "permanent";
-    return { s3Key: null, derivedCandidateUrl: derived, attempted };
+    if (result.outcome === "permanent") {
+      return { s3Key: null, derivedCandidateUrl: derived, attempted: true };
+    }
+    if (result.outcome === "blocked") {
+      // Breaker tripped mid-round (after the SQL filter snapshot). No fetch
+      // happened, so don't bump the retry counter — this row will be
+      // SQL-excluded next round until the window clears.
+      return { s3Key: null, derivedCandidateUrl: derived, attempted: false };
+    }
+    // "transient": real failure (429-after-retry, 5xx, network, S3 put fail).
+    // Bump the counter and dead-letter once it crosses the cap.
+    const nextCount = rawTransientCount(r.raw) + 1;
+    const exhausted = nextCount >= MAX_TRANSIENT_ATTEMPTS;
+    return {
+      s3Key: null,
+      derivedCandidateUrl: derived,
+      attempted: exhausted,
+      transientCount: nextCount,
+    };
   } catch {
-    // Unexpected exception from the storage layer — treat as transient.
-    return { s3Key: null, derivedCandidateUrl: derived, attempted: false };
+    // Unexpected exception in the storage layer — count it as transient so
+    // a pathological case still hits the cap eventually.
+    const nextCount = rawTransientCount(r.raw) + 1;
+    const exhausted = nextCount >= MAX_TRANSIENT_ATTEMPTS;
+    return {
+      s3Key: null,
+      derivedCandidateUrl: derived,
+      attempted: exhausted,
+      transientCount: nextCount,
+    };
   }
 }
