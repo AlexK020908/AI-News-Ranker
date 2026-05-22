@@ -3,13 +3,15 @@ import { DEFAULT_REGION, type Source } from "@/lib/types";
 import { runPool } from "@/lib/utils";
 import { adapters } from "./registry";
 import { upsertItems } from "./write";
-import { pruneOldItems } from "./retention";
+import { pruneOldItems, pruneOldSnapshots } from "./retention";
 
 export interface RunResult {
   sourceSlug: string;
   attempted: number;
   inserted: number;
   skipped: number;
+  snapshots: number;
+  snapshot_errors: number;
   error: string | null;
   durationMs: number;
 }
@@ -18,6 +20,8 @@ export interface IngestSummary {
   results: RunResult[];
   pruned: number;
   cutoff: string;
+  pruned_snapshots: number;
+  snapshot_cutoff: string;
 }
 
 export async function runIngestionForSource(
@@ -43,15 +47,20 @@ export async function runIngestionForSource(
       await markPolled(supabase, source.id, result.error);
       return empty(source.slug, result.error, started);
     }
-    const { inserted, skipped } = await upsertItems(supabase, source.id, result.items, {
-      defaultRegion: region,
-    });
+    const { inserted, skipped, snapshots, snapshot_errors } = await upsertItems(
+      supabase,
+      source.id,
+      result.items,
+      { defaultRegion: region },
+    );
     await markPolled(supabase, source.id, result.error ?? null);
     return {
       sourceSlug: source.slug,
       attempted: result.items.length,
       inserted,
       skipped,
+      snapshots,
+      snapshot_errors,
       error: result.error ?? null,
       durationMs: Date.now() - started,
     };
@@ -68,6 +77,8 @@ function empty(slug: string, error: string, started: number): RunResult {
     attempted: 0,
     inserted: 0,
     skipped: 0,
+    snapshots: 0,
+    snapshot_errors: 0,
     error,
     durationMs: Date.now() - started,
   };
@@ -85,7 +96,23 @@ export async function runIngestionForAll(
   opts: { concurrency?: number; onlySlugs?: string[] } = {},
 ): Promise<IngestSummary> {
   // Sweep stale items first so they're gone before any new backfill lands.
+  // Snapshot pruning is independent of item pruning — snapshots cascade-
+  // delete when their parent item is removed, so this only catches rows
+  // whose items are still inside the item retention window but whose
+  // observation is older than the snapshot window.
   const { deleted: pruned, cutoff } = await pruneOldItems(supabase);
+  // Snapshot pruning is best-effort: if migration 005 hasn't landed yet
+  // the table doesn't exist, and we don't want to take down the entire
+  // ingest pipeline while waiting for a deploy to apply migrations.
+  let prunedSnaps = 0;
+  let snapCutoff = "";
+  try {
+    const r = await pruneOldSnapshots(supabase);
+    prunedSnaps = r.deleted;
+    snapCutoff = r.cutoff;
+  } catch (e) {
+    console.warn("prune snapshots (best-effort, ignoring):", (e as Error).message);
+  }
 
   let query = supabase
     .from("sources")
@@ -105,5 +132,11 @@ export async function runIngestionForAll(
     const r = await runIngestionForSource(supabase, source);
     results.push(r);
   });
-  return { results, pruned, cutoff };
+  return {
+    results,
+    pruned,
+    cutoff,
+    pruned_snapshots: prunedSnaps,
+    snapshot_cutoff: snapCutoff,
+  };
 }

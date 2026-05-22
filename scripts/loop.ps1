@@ -44,5 +44,17 @@
       Write-Host " delivered=$($nf.delivered)"
     } else { Write-Host "" }
 
+    # Digest is idempotent per-day: cheap to hit every tick; no-ops outside
+    # the daily window. No need to gate the call here.
+    Write-Host "[$ts] digest..." -NoNewline
+    $dg = Hit "/api/jobs/digest"
+    if ($dg) {
+      if ($dg.skipped) {
+        Write-Host " skipped"
+      } else {
+        Write-Host " pushed=$($dg.pushed) items=$($dg.item_count)"
+      }
+    } else { Write-Host "" }
+
     Start-Sleep -Seconds 900
   }

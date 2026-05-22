@@ -168,6 +168,9 @@ export const cacheKeys = {
   stories(region: string, max: number) {
     return `${KEY_VERSION}:stories:${region}:${max}`;
   },
+  rising(windowHours: number, minDelta: number, maxRows: number) {
+    return `${KEY_VERSION}:rising:${windowHours}:${minDelta}:${maxRows}`;
+  },
   topTopics(region: string, max: number) {
     return `${KEY_VERSION}:toptopics:${region}:${max}`;
   },
@@ -186,4 +189,8 @@ export const ttl = {
   stories: 60,
   topTopics: 60,
   sources: 300,
+  // Same TTL as stories so cluster-member-IDs vs rising-IDs stay in sync —
+  // mismatched freshness was the source of false flame badges and
+  // duplicate items in the singleton-rising strip.
+  rising: 60,
 };

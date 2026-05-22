@@ -24,10 +24,13 @@ if (!SECRET) {
 const ENDPOINTS = [
   // Run in order: ingest → enrich → cluster. Each is independent and safe to
   // run alone but the natural pipeline order minimises end-to-end latency.
+  // The digest endpoint is idempotent per UTC-day, so calling it every tick
+  // is harmless — it no-ops until the next period rolls.
   { name: "ingest",         path: "/api/jobs/ingest",         timeoutMs: 240_000 },
   { name: "enrich",         path: "/api/jobs/enrich",         timeoutMs: 240_000 },
   { name: "cluster-topics", path: "/api/jobs/cluster-topics", timeoutMs: 240_000 },
   { name: "notify",         path: "/api/jobs/notify",         timeoutMs: 60_000  },
+  { name: "digest",         path: "/api/jobs/digest",         timeoutMs: 120_000 },
 ];
 
 async function hit(endpoint) {

@@ -59,6 +59,19 @@ export function ClusterCard({ cluster, hero, variant, onOpen, index }: Props) {
             </span>
           </>
         )}
+        {cluster.rising && (
+          <>
+            <span className="cluster__head__sep">·</span>
+            <span
+              className="cluster__head__badge"
+              title="Score climbing fast in the last 12h"
+              style={{ color: "oklch(0.78 0.16 40)" }}
+            >
+              <span aria-hidden="true">🔥</span>
+              Rising
+            </span>
+          </>
+        )}
         <span className="cluster__head__spacer" />
       </div>
 

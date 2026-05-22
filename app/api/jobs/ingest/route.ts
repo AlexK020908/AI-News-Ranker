@@ -19,15 +19,20 @@ export async function GET(req: NextRequest) {
 
   try {
     const supabase = createSupabaseServiceClient();
-    const { results, pruned, cutoff } = await runIngestionForAll(supabase, { onlySlugs, concurrency });
+    const { results, pruned, cutoff, pruned_snapshots, snapshot_cutoff } =
+      await runIngestionForAll(supabase, { onlySlugs, concurrency });
     const summary = {
       sources: results.length,
       attempted: results.reduce((n, r) => n + r.attempted, 0),
       inserted: results.reduce((n, r) => n + r.inserted, 0),
       skipped: results.reduce((n, r) => n + r.skipped, 0),
+      snapshots: results.reduce((n, r) => n + r.snapshots, 0),
+      snapshot_errors: results.reduce((n, r) => n + r.snapshot_errors, 0),
       errored: results.filter((r) => r.error).length,
       pruned,
+      pruned_snapshots,
       retention_cutoff: cutoff,
+      snapshot_cutoff,
     };
     return Response.json({ ok: true, summary, results });
   } catch (e) {

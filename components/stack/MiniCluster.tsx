@@ -60,6 +60,12 @@ export function MiniCluster({ cluster, onOpen, index }: Props) {
                 <span style={{ color: "var(--accent)" }}>Breaking</span>
               </>
             )}
+            {cluster.rising && (
+              <>
+                <span className="mini__sep">·</span>
+                <span title="Score climbing fast in the last 12h">🔥 Rising</span>
+              </>
+            )}
           </div>
           <h3 className="mini__title" style={{ marginTop: 4 }}>{cluster.headline}</h3>
         </div>

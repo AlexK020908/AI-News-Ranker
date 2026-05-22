@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { StackCluster } from "@/lib/stack/types";
+import type { RisingStandalone } from "@/lib/stack/rising-transform";
 import { isStackTopicId } from "@/lib/stack/topics";
 import { useScrollY } from "@/lib/stack/hooks";
 import { Nav } from "./Nav";
@@ -10,6 +11,7 @@ import { ClusterCard } from "./ClusterCard";
 import { MiniCluster } from "./MiniCluster";
 import { ClusterDetail } from "./ClusterDetail";
 import { Onboarding } from "./Onboarding";
+import { RisingStrip } from "./RisingStrip";
 
 const ACCENT_PRESETS = [
   { hex: "#f5a73c", oklch: "oklch(0.78 0.15 60)" },
@@ -24,9 +26,10 @@ function findAccentOklch(hex: string): string {
 
 interface Props {
   clusters: StackCluster[];
+  risingSingletons?: RisingStandalone[];
 }
 
-export function StackApp({ clusters }: Props) {
+export function StackApp({ clusters, risingSingletons = [] }: Props) {
   const [dark, setDark] = useState(true);
   const [accent] = useState("#f5a73c");
   const [topic, setTopic] = useState("all");
@@ -165,6 +168,9 @@ export function StackApp({ clusters }: Props) {
                   />
                 ))}
               </div>
+            )}
+            {topic === "all" && risingSingletons.length > 0 && (
+              <RisingStrip items={risingSingletons} />
             )}
             <div className="endbar">— end of today&apos;s brief —</div>
           </>

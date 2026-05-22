@@ -92,6 +92,7 @@ insert into sources (slug, name, kind, region, config, poll_interval_sec) values
 ('arxiv-stat-ml',         'arXiv stat.ML',                'arxiv', 'global', '{"category":"stat.ML"}', 3600),
 
 -- ============== GitHub ==============
+-- Daily topic feeds: catch fresh-push repos in a single topic.
 ('github-trending-ai',     'GitHub Trending — AI',        'github_trending', 'global',
   '{"topic":"artificial-intelligence","since":"daily"}',                                             3600),
 ('github-trending-llm',    'GitHub Trending — LLM',       'github_trending', 'global',
@@ -106,6 +107,54 @@ insert into sources (slug, name, kind, region, config, poll_interval_sec) values
   '{"topic":"vector-database","since":"weekly"}',                                                    21600),
 ('github-trending-mcp',    'GitHub Trending — MCP',       'github_trending', 'global',
   '{"topic":"model-context-protocol","since":"weekly"}',                                             21600),
+
+-- Extra daily topic feeds added to widen coverage. The original 7 topics
+-- left major chunks of the AI-repo ecosystem invisible (transformers,
+-- diffusion, image-gen, generative-ai variants don't all self-tag with
+-- 'artificial-intelligence' or 'llm').
+('github-trending-genai',         'GitHub Trending — GenAI',          'github_trending', 'global',
+  '{"topic":"generative-ai","since":"daily"}',                                                       3600),
+('github-trending-deep-learning', 'GitHub Trending — Deep Learning',  'github_trending', 'global',
+  '{"topic":"deep-learning","since":"weekly"}',                                                      21600),
+('github-trending-transformers',  'GitHub Trending — Transformers',   'github_trending', 'global',
+  '{"topic":"transformers","since":"weekly"}',                                                       21600),
+('github-trending-gpt',           'GitHub Trending — GPT',            'github_trending', 'global',
+  '{"topic":"gpt","since":"daily"}',                                                                 7200),
+('github-trending-diffusion',     'GitHub Trending — Diffusion',      'github_trending', 'global',
+  '{"topic":"diffusion-models","since":"weekly"}',                                                   21600),
+('github-trending-text-to-image', 'GitHub Trending — Text-to-Image',  'github_trending', 'global',
+  '{"topic":"text-to-image","since":"weekly"}',                                                      21600),
+('github-trending-finetune',      'GitHub Trending — Fine-tuning',    'github_trending', 'global',
+  '{"topic":"fine-tuning","since":"weekly"}',                                                        21600),
+('github-trending-prompt-eng',    'GitHub Trending — Prompt Eng',     'github_trending', 'global',
+  '{"topic":"prompt-engineering","since":"weekly"}',                                                 21600),
+('github-trending-tts',           'GitHub Trending — Speech/TTS',     'github_trending', 'global',
+  '{"topic":"text-to-speech","since":"weekly"}',                                                     21600),
+
+-- Weekly variants of the high-volume daily feeds. The daily query
+-- (pushed:>2-days) misses mature, popular repos whose code is stable;
+-- the weekly query (pushed:>7-days) catches them. Both run because the
+-- per_page=25 cap means each window surfaces different rows. Higher
+-- min_stars on weekly feeds focuses on truly notable repos.
+('github-trending-ai-weekly',     'GitHub Trending — AI (weekly)',    'github_trending', 'global',
+  '{"topic":"artificial-intelligence","since":"weekly","min_stars":500}',                            21600),
+('github-trending-llm-weekly',    'GitHub Trending — LLM (weekly)',   'github_trending', 'global',
+  '{"topic":"llm","since":"weekly","min_stars":500}',                                                21600),
+('github-trending-agents-weekly', 'GitHub Trending — Agents (weekly)','github_trending', 'global',
+  '{"topic":"ai-agent","since":"weekly","min_stars":300}',                                           21600),
+('github-trending-rag-weekly',    'GitHub Trending — RAG (weekly)',   'github_trending', 'global',
+  '{"topic":"rag","since":"weekly","min_stars":300}',                                                21600),
+
+-- Free-form github_search sources for repos that don't carry one of the
+-- 14 topic tags above. The `query` config bypasses the topic: prefix and
+-- is passed verbatim to the GitHub search API. Star floor is enforced
+-- via min_stars; recency via the adapter's pushed:> append.
+('github-search-llm-omnibus',     'GitHub Search — LLM omnibus',      'github_search', 'global',
+  '{"query":"language:python (LLM OR \"large language model\" OR transformer)","since":"weekly","min_stars":1000}',  21600),
+('github-search-agent-omnibus',   'GitHub Search — Agent omnibus',    'github_search', 'global',
+  '{"query":"(agent OR autogpt OR \"ai agent\") in:name,description,readme","since":"weekly","min_stars":500}',      21600),
+('github-search-mcp-broad',       'GitHub Search — MCP broad',        'github_search', 'global',
+  '{"query":"\"model context protocol\" OR mcp-server in:name,description","since":"weekly","min_stars":50}',        21600),
 
 -- ============== Hugging Face ==============
 ('hf-models-trending',     'HF Trending Models',          'huggingface_models',   'global',

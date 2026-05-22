@@ -26,10 +26,19 @@ interface GHRepo {
 }
 
 export const githubTrendingAdapter: Adapter = async (ctx) => {
-  const topic = readStringConfig(ctx, "topic", "artificial-intelligence");
   const since = readStringConfig(ctx, "since", "daily");
   const minStars = readNumberConfig(ctx, "min_stars", 10);
-  const q = `topic:${topic} pushed:>${sinceDate(since)} stars:>=${minStars}`;
+  // Free-form `query` config takes precedence. When set, we trust it
+  // verbatim and only append the recency + star floor. This lets a
+  // source filter on more than one topic (e.g. `topic:llm OR topic:gpt`)
+  // or use language/qualifier filters that the simple topic form can't
+  // express. When unset, fall back to the historic single-topic query.
+  const customQuery = readStringConfig(ctx, "query");
+  const topic = readStringConfig(ctx, "topic", "artificial-intelligence");
+  const baseQuery = customQuery
+    ? customQuery
+    : `topic:${topic}`;
+  const q = `${baseQuery} pushed:>${sinceDate(since)} stars:>=${minStars}`;
   const url = `https://api.github.com/search/repositories?q=${encodeURIComponent(q)}&sort=stars&order=desc&per_page=25`;
 
   const headers: Record<string, string> = {
@@ -63,7 +72,8 @@ export const githubTrendingAdapter: Adapter = async (ctx) => {
         stars: r.stargazers_count,
         topics: r.topics ?? [],
         language: r.language,
-        topic_filter: topic,
+        topic_filter: customQuery ? null : topic,
+        query: customQuery || null,
       },
     }));
     return { items };

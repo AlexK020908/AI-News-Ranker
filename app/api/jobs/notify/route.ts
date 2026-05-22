@@ -20,6 +20,7 @@ interface WebhookRow {
   min_importance: number;
   categories: Category[];
   manage_token: string;
+  is_digest: boolean | null;
 }
 
 interface CandidateItem {
@@ -47,10 +48,16 @@ export async function GET(req: NextRequest) {
     return Response.json({ error: (e as Error).message }, { status: 500 });
   }
 
+  // Exclude digest subscribers: a webhook that opted into the daily
+  // digest does NOT want a stream of per-item alerts on top. The
+  // is_digest column defaults to false so legacy webhooks are
+  // unaffected. (Migration 005 adds the column; we use coalesce here
+  // so this route still works against an un-migrated DB during deploys.)
   const { data: webhooks, error: wErr } = await supabase
     .from("webhooks")
-    .select("id, url, min_importance, categories, manage_token")
-    .eq("enabled", true);
+    .select("id, url, min_importance, categories, manage_token, is_digest")
+    .eq("enabled", true)
+    .or("is_digest.is.null,is_digest.eq.false");
 
   if (wErr) return Response.json({ error: wErr.message }, { status: 500 });
   const subs = (webhooks ?? []) as WebhookRow[];

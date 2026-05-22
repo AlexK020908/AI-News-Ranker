@@ -30,6 +30,10 @@ export interface StackCluster {
   hoursAgo: number;
   readMin: number;
   breaking: boolean;
+  // True when at least one member is currently in the rising_items result —
+  // i.e. its score (HN points, GH stars, etc.) is climbing fast in the
+  // recent observation window. Surfaced as a flame badge.
+  rising: boolean;
   sources: StackSource[];
 }
 

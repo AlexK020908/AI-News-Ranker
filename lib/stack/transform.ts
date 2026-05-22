@@ -65,7 +65,7 @@ function memberToSource(m: StoryMember): StackSource {
   };
 }
 
-export function clusterFromBucket(b: StoryBucket): StackCluster {
+export function clusterFromBucket(b: StoryBucket, risingIds?: ReadonlySet<string>): StackCluster {
   const sources = b.members.map(memberToSource);
   // Use the freshest member time as the cluster's hoursAgo — last_updated_at
   // reflects when the cluster row itself was touched by the job, which isn't
@@ -74,6 +74,8 @@ export function clusterFromBucket(b: StoryBucket): StackCluster {
     .map((m) => (m.published_at ? Date.parse(m.published_at) : 0))
     .reduce((a, b) => Math.max(a, b), 0);
   const newestIso = newestMs > 0 ? new Date(newestMs).toISOString() : b.last_updated_at;
+
+  const rising = risingIds ? b.members.some((m) => risingIds.has(m.id)) : false;
 
   return {
     id: b.topic_id,
@@ -84,6 +86,7 @@ export function clusterFromBucket(b: StoryBucket): StackCluster {
     hoursAgo: hoursAgoFrom(newestIso),
     readMin: estimateReadMin(b.topic_summary),
     breaking: (b.max_importance ?? 0) >= 92,
+    rising,
     sources,
   };
 }
