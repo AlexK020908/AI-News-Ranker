@@ -112,6 +112,28 @@ const RSS_SOURCES = [
   // Cloud-vendor ML blogs
   ["aws-ml-blog",           "https://aws.amazon.com/blogs/machine-learning/feed/"],
   ["cloudflare-ai",         "https://blog.cloudflare.com/tag/ai/rss/"],
+
+  // 2026-05-22 additions — sources tldr.tech cites regularly.
+  // General tech journalism (AI-adjacent):
+  ["thenextweb",            "https://thenextweb.com/feed"],
+  ["9to5google",            "https://9to5google.com/feed/"],
+  ["techmeme",              "https://www.techmeme.com/feed.xml"],
+  ["pragmatic-engineer",    "https://newsletter.pragmaticengineer.com/feed"],
+  // AI-focused research / engineering blogs:
+  ["pytorch-blog",          "https://pytorch.org/blog/feed.xml"],
+  // apple-ml dropped — rss.xml ships unescaped `&` in titles, breaking
+  // rss-parser. Add a crawler stub if first-party Apple ML coverage matters.
+  ["vercel-blog",           "https://vercel.com/blog/feed.xml"],
+  ["spotify-engineering",   "https://engineering.atspotify.com/feed"],
+  ["meta-engineering",      "https://engineering.fb.com/feed/"],
+  // AI commentary / analyst:
+  ["tom-tunguz",            "https://tomtunguz.com/index.xml"],
+  ["searchengineland",      "https://searchengineland.com/feed"],
+  ["testingcatalog",        "https://www.testingcatalog.com/rss/"],
+  // corememory dropped: too broad (covers aerospace history etc.) for an
+  // AI-only feed despite Vance frequently covering the industry.
+  ["algorithmic-bridge",    "https://www.thealgorithmicbridge.com/feed"],
+  ["understanding-ai",      "https://www.understandingai.org/feed"],
 ];
 
 const CRAWLER_SOURCES = [

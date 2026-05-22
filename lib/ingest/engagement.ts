@@ -32,3 +32,12 @@ export function huggingfaceEngagement(likes: number, downloads: number): number 
   // Weighted average favoring likes; both matter though.
   return Math.min(100, Math.round(likeScore * 0.6 + dlScore * 0.4));
 }
+
+export function huggingfacePapersEngagement(upvotes: number, comments: number): number {
+  // HF Daily Papers upvote distribution: the daily top hits 100-200, a "good"
+  // paper sits around 40-80, anything ≥15 is genuinely notable curated content.
+  // Pivot at 60 puts that "notable" band around score 70.
+  const upScore = logNormalize(upvotes, 60);
+  const commentBoost = Math.min(12, Math.log10(1 + comments) * 5);
+  return Math.min(100, Math.round(upScore + commentBoost));
+}

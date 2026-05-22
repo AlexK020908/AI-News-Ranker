@@ -3,15 +3,33 @@
 import { useEffect, useMemo, useState } from "react";
 import type { StackCluster } from "@/lib/stack/types";
 import type { RisingStandalone } from "@/lib/stack/rising-transform";
+import type { TrendingRepoCard } from "@/lib/stack/trending-repo-transform";
+import { CATEGORIES, CATEGORY_LABELS, isCategory, type Category } from "@/lib/types";
 import { isStackTopicId } from "@/lib/stack/topics";
 import { useScrollY } from "@/lib/stack/hooks";
 import { Nav } from "./Nav";
 import { BriefingHeader } from "./BriefingHeader";
 import { ClusterCard } from "./ClusterCard";
-import { MiniCluster } from "./MiniCluster";
 import { ClusterDetail } from "./ClusterDetail";
 import { Onboarding } from "./Onboarding";
 import { RisingStrip } from "./RisingStrip";
+import { TopicRow } from "./TopicRow";
+import { TrendingReposStrip } from "./TrendingReposStrip";
+
+const CATEGORIES_KEY = "stack.categories";
+
+// Display cap in single-topic view. Not applied to the "All" rows view —
+// that uses per-category quotas (ROW_MAX) instead so each row fills.
+const DISPLAY_MAX = 60;
+// Per-topic cap in the "All" rows view. The server overfetches (MAX_TOPICS
+// in app/page.tsx) so we can carve N cards per category here without
+// running out. Cards beyond this point are not rendered for the row;
+// the user can pill-filter to that category for the full list.
+const ROW_MAX = 12;
+// Minimum clusters needed to bother showing a topic row. A 1-card row looks
+// like a layout glitch; below this floor the cluster is simply dropped from
+// the rows view (still reachable via the topic pill or the rising strip).
+const ROW_MIN = 1;
 
 const ACCENT_PRESETS = [
   { hex: "#f5a73c", oklch: "oklch(0.78 0.15 60)" },
@@ -27,14 +45,24 @@ function findAccentOklch(hex: string): string {
 interface Props {
   clusters: StackCluster[];
   risingSingletons?: RisingStandalone[];
+  trendingRepos?: TrendingRepoCard[];
 }
 
-export function StackApp({ clusters, risingSingletons = [] }: Props) {
+export function StackApp({
+  clusters,
+  risingSingletons = [],
+  trendingRepos = [],
+}: Props) {
   const [dark, setDark] = useState(true);
   const [accent] = useState("#f5a73c");
   const [topic, setTopic] = useState("all");
   const [detailId, setDetailId] = useState<string | null>(null);
   const [showOnb, setShowOnb] = useState(false);
+  // Multi-select category subset for the "All" view. Default = every
+  // category enabled (no filtering). Hydrated from localStorage on mount.
+  const [enabledCategories, setEnabledCategories] = useState<ReadonlySet<Category>>(
+    () => new Set<Category>(CATEGORIES),
+  );
   const scrollY = useScrollY();
 
   // Hydrate persisted preferences once on mount. Doing this in a useEffect
@@ -47,7 +75,30 @@ export function StackApp({ clusters, risingSingletons = [] }: Props) {
     } catch {
       /* private mode — show by default */
     }
+    try {
+      const saved = localStorage.getItem(CATEGORIES_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          const valid = parsed.filter(isCategory);
+          // Empty set is intentionally allowed (user can hide everything)
+          // but we reject malformed entries.
+          setEnabledCategories(new Set<Category>(valid));
+        }
+      }
+    } catch {
+      /* private mode or corrupt JSON — keep the default */
+    }
   }, []);
+
+  // Persist on change. Skipped on the initial mount-with-default render
+  // because writing "everything" before hydration would clobber a saved
+  // empty set; the hydration effect above runs first.
+  useEffect(() => {
+    try {
+      localStorage.setItem(CATEGORIES_KEY, JSON.stringify([...enabledCategories]));
+    } catch { /* private mode — silently no-op */ }
+  }, [enabledCategories]);
 
   const docMax = typeof document !== "undefined"
     ? Math.max(1, document.documentElement.scrollHeight - window.innerHeight)
@@ -71,9 +122,42 @@ export function StackApp({ clusters, risingSingletons = [] }: Props) {
   };
 
   const filtered = useMemo(() => {
-    if (topic === "all") return clusters;
-    return clusters.filter((c) => c.topic === topic);
-  }, [clusters, topic]);
+    if (topic === "all") {
+      // For the "All" view we DON'T pre-slice — the per-category quota in
+      // topicRows below does the trimming. Slicing here would re-introduce
+      // the dominant-category-crowds-out-everyone-else bug the rows layout
+      // was built to fix.
+      return clusters.filter((c) =>
+        isCategory(c.topic) ? enabledCategories.has(c.topic) : true,
+      );
+    }
+    // Single-topic view (user clicked a pill): the grid does benefit from
+    // a cap, since long-tail categories can have hundreds of items.
+    return clusters.filter((c) => c.topic === topic).slice(0, DISPLAY_MAX);
+  }, [clusters, topic, enabledCategories]);
+
+  // "All" view: bucket clusters by their modal category, take the top
+  // ROW_MAX of each (already in trending_score order from the server), and
+  // emit one row per category. Rows are ordered by total cluster volume
+  // so the most-active category leads the page.
+  const topicRows = useMemo(() => {
+    if (topic !== "all") return [];
+    const groups = new Map<Category, StackCluster[]>();
+    for (const c of filtered) {
+      const cat = isCategory(c.topic) ? c.topic : ("other" as Category);
+      const arr = groups.get(cat) ?? [];
+      if (arr.length < ROW_MAX) arr.push(c);
+      groups.set(cat, arr);
+    }
+    return CATEGORIES
+      .filter((cat) => (groups.get(cat)?.length ?? 0) >= ROW_MIN)
+      .map((cat) => ({
+        category: cat,
+        label: CATEGORY_LABELS[cat],
+        clusters: groups.get(cat) as StackCluster[],
+      }))
+      .sort((a, b) => b.clusters.length - a.clusters.length);
+  }, [filtered, topic]);
 
   const detail = detailId ? clusters.find((c) => c.id === detailId) : null;
 
@@ -97,6 +181,8 @@ export function StackApp({ clusters, risingSingletons = [] }: Props) {
       <Nav
         topic={topic}
         setTopic={handleSetTopic}
+        enabledCategories={enabledCategories}
+        setEnabledCategories={setEnabledCategories}
         theme={dark ? "dark" : "light"}
         setTheme={(th) => setDark(th === "dark")}
         onLogo={() => { setDetailId(null); setTopic("all"); }}
@@ -110,7 +196,7 @@ export function StackApp({ clusters, risingSingletons = [] }: Props) {
         ) : (
           <>
             <BriefingHeader
-              clusters={clusters}
+              clusters={filtered}
               visibleCount={filtered.length}
               topic={topic}
               scrollY={scrollY}
@@ -119,50 +205,28 @@ export function StackApp({ clusters, risingSingletons = [] }: Props) {
               <div className="empty">
                 No clusters in this topic right now. <b>Check back soon.</b>
               </div>
-            ) : filtered.length >= 4 ? (
-              <>
-                <div className="home">
-                  <ClusterCard
-                    cluster={filtered[0]}
-                    hero
+            ) : topic === "all" ? (
+              // "All" view: one horizontal scrolling row per category so no
+              // single topic (papers, in particular) can crowd out the rest.
+              <div className="topic-rows">
+                {topicRows.map(({ category, label, clusters: row }) => (
+                  <TopicRow
+                    key={category}
+                    label={label}
+                    clusters={row}
                     onOpen={setDetailId}
-                    index={0}
                   />
-                  <div className="sidebar">
-                    {filtered.slice(1, 4).map((c, i) => (
-                      <MiniCluster
-                        key={c.id}
-                        cluster={c}
-                        onOpen={setDetailId}
-                        index={i + 1}
-                      />
-                    ))}
-                  </div>
-                </div>
-                {filtered.length > 4 && (
-                  <>
-                    <div className="section-title">More briefs</div>
-                    <div className="grid">
-                      {filtered.slice(4).map((c, i) => (
-                        <ClusterCard
-                          key={c.id}
-                          cluster={c}
-                          variant="compact"
-                          onOpen={setDetailId}
-                          index={i + 4}
-                        />
-                      ))}
-                    </div>
-                  </>
-                )}
-              </>
+                ))}
+              </div>
             ) : (
+              // Single-topic view: keep the grid so the user gets the full
+              // catalog of that category at once.
               <div className="grid">
                 {filtered.map((c, i) => (
                   <ClusterCard
                     key={c.id}
                     cluster={c}
-                    variant="compact"
+                    variant="row"
                     onOpen={setDetailId}
                     index={i}
                   />
@@ -171,6 +235,12 @@ export function StackApp({ clusters, risingSingletons = [] }: Props) {
             )}
             {topic === "all" && risingSingletons.length > 0 && (
               <RisingStrip items={risingSingletons} />
+            )}
+            {/* Trending repos strip appears only when the user is on the
+                Repo topic filter — keeps the default All view clean while
+                giving the dedicated repo view the rich star-based cards. */}
+            {topic === "repo" && trendingRepos.length > 0 && (
+              <TrendingReposStrip items={trendingRepos} />
             )}
             <div className="endbar">— end of today&apos;s brief —</div>
           </>

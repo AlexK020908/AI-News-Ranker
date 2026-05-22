@@ -171,6 +171,12 @@ export const cacheKeys = {
   rising(windowHours: number, minDelta: number, maxRows: number) {
     return `${KEY_VERSION}:rising:${windowHours}:${minDelta}:${maxRows}`;
   },
+  trendingRepos(minStars: number, daysBack: number, maxRows: number) {
+    return `${KEY_VERSION}:trendingrepos:${minStars}:${daysBack}:${maxRows}`;
+  },
+  solo(region: string, daysBack: number, maxRows: number, minImportance: number) {
+    return `${KEY_VERSION}:solo:${region}:${daysBack}:${maxRows}:${minImportance}`;
+  },
   topTopics(region: string, max: number) {
     return `${KEY_VERSION}:toptopics:${region}:${max}`;
   },
@@ -193,4 +199,6 @@ export const ttl = {
   // mismatched freshness was the source of false flame badges and
   // duplicate items in the singleton-rising strip.
   rising: 60,
+  trendingRepos: 120,
+  solo: 60,
 };

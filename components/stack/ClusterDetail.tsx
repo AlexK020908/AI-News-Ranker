@@ -53,6 +53,13 @@ export function ClusterDetail({ cluster, onBack }: Props) {
 
         <h1 className="detail-title">{cluster.headline}</h1>
 
+        {cluster.topic === "paper" && cluster.cavemanSummary && (
+          <div className="cluster__caveman" style={{ margin: "12px 0" }}>
+            <span className="cluster__caveman__label">CAVEMAN</span>
+            <span className="cluster__caveman__body">{cluster.cavemanSummary}</span>
+          </div>
+        )}
+
         <p className="detail-summary">{cluster.summary}</p>
 
         <div className="detail-strip">

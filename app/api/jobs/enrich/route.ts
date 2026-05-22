@@ -136,6 +136,13 @@ export async function GET(req: NextRequest) {
           enriched_at: new Date().toISOString(),
           enrich_error: null,
         };
+        // Plain-English caveman explanation — only persisted for papers.
+        // Claude is instructed to omit it for non-paper items, but the
+        // belt-and-suspenders gate here keeps a stray response from
+        // populating the column on a "release" or "news" row.
+        if (result.category === "paper" && result.caveman_summary) {
+          update.caveman_summary = result.caveman_summary;
+        }
         if (embedding) {
           update.embedding = embedding;
           const { data: matches } = await supabase.rpc("similar_recent_items", {

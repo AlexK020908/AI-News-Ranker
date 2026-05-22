@@ -19,6 +19,8 @@ export interface StoryMember {
   // captured during ingest. The transform layer prefers s3 when present.
   s3_storage_id: string | null;
   thumb_url: string | null;
+  // Plain-English paper explanation. Null for non-papers.
+  caveman_summary?: string | null;
 }
 
 export interface StoryBucket {

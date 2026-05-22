@@ -22,6 +22,9 @@ export interface EnrichResult {
   category: Category;
   tags: string[];
   importance: number;
+  // Plain-English paper explanation. Only populated when Claude returned
+  // a non-empty caveman_summary AND the category resolved to "paper".
+  caveman_summary: string | null;
   raw: EnrichmentOutput;
 }
 
@@ -50,11 +53,21 @@ export async function enrichItem(input: EnrichInput): Promise<EnrichResult> {
     throw new Error("Anthropic response had no text block");
   }
   const parsed = parseEnrichmentJSON(textBlock.text);
+  const category = normalizeCategory(parsed.category);
+  // Only retain caveman_summary if Claude flagged this as a paper. Anything
+  // else either had no caveman field returned (per instruction) or it was a
+  // hallucinated stray — drop it.
+  const cavemanRaw = typeof parsed.caveman_summary === "string"
+    ? parsed.caveman_summary.trim()
+    : "";
   return {
     summary: parsed.summary,
-    category: normalizeCategory(parsed.category),
+    category,
     tags: normalizeTags(parsed.tags),
     importance: clampImportance(parsed.importance),
+    caveman_summary: category === "paper" && cavemanRaw.length > 0
+      ? cavemanRaw.slice(0, 320)
+      : null,
     raw: parsed,
   };
 }

@@ -62,6 +62,7 @@ function memberToSource(m: StoryMember): StackSource {
       label: thumbLabel(m),
       imageUrl: resolveImageUrl(m),
     },
+    cavemanSummary: m.caveman_summary ?? null,
   };
 }
 
@@ -76,11 +77,23 @@ export function clusterFromBucket(b: StoryBucket, risingIds?: ReadonlySet<string
   const newestIso = newestMs > 0 ? new Date(newestMs).toISOString() : b.last_updated_at;
 
   const rising = risingIds ? b.members.some((m) => risingIds.has(m.id)) : false;
+  const topic = topicForCluster(b.members.map((m) => m.category));
+
+  // For paper-majority clusters: pick the caveman_summary from the highest-
+  // importance paper member. Other members may have null caveman fields
+  // (if Claude declined or the column hadn't been populated yet on backfill).
+  let cavemanSummary: string | null = null;
+  if (topic === "paper") {
+    const paperMembers = b.members
+      .filter((m) => m.category === "paper" && m.caveman_summary)
+      .sort((a, c) => (c.importance ?? 0) - (a.importance ?? 0));
+    cavemanSummary = paperMembers[0]?.caveman_summary ?? null;
+  }
 
   return {
     id: b.topic_id,
     slug: b.topic_slug,
-    topic: topicForCluster(b.members.map((m) => m.category)),
+    topic,
     headline: b.topic_label,
     summary: b.topic_summary ?? "",
     hoursAgo: hoursAgoFrom(newestIso),
@@ -88,5 +101,6 @@ export function clusterFromBucket(b: StoryBucket, risingIds?: ReadonlySet<string
     breaking: (b.max_importance ?? 0) >= 92,
     rising,
     sources,
+    cavemanSummary,
   };
 }

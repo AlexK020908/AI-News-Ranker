@@ -91,6 +91,13 @@ insert into sources (slug, name, kind, region, config, poll_interval_sec) values
 ('arxiv-cs-hc',           'arXiv cs.HC',                  'arxiv', 'global', '{"category":"cs.HC"}',  3600),
 ('arxiv-stat-ml',         'arXiv stat.ML',                'arxiv', 'global', '{"category":"stat.ML"}', 3600),
 
+-- HuggingFace Daily Papers: ~50 community-curated trending AI papers/day
+-- with upvotes. Higher signal-to-noise than the arXiv chronological
+-- firehose; engagement_score is computed from upvotes by the adapter so
+-- the SQL trending_score formula can rank them out of the box.
+('hf-daily-papers',       'HF Daily Papers',              'huggingface_papers', 'global',
+  '{"max_results":50}',                                                                              3600),
+
 -- ============== GitHub ==============
 -- Daily topic feeds: catch fresh-push repos in a single topic.
 ('github-trending-ai',     'GitHub Trending — AI',        'github_trending', 'global',
@@ -192,6 +199,54 @@ insert into sources (slug, name, kind, region, config, poll_interval_sec) values
 ('rest-of-world',          'Rest of World',               'rss', 'global',
   '{"url":"https://restofworld.org/feed/latest/"}',                                                  3600),
 
+-- ============== Added 2026-05-22: sources tldr.tech cites regularly ==============
+-- All AI-relevant, all RSS verified reachable + parseable + recent (<60d).
+-- Audit methodology: walked 4 TLDR AI archive issues (2026-05-21, -05-14,
+-- -05-07, -04-30) to harvest cited domains, then probed each for an RSS
+-- endpoint. 9to5Mac/Tomshardware/Geekwire ruled out as general tech (low
+-- AI-density per Claude relevance score). NYT/Pinecone/Meta-AI ruled out as
+-- 404 or unreachable from our probe. SemiAnalysis ruled out as stale.
+-- Reputation tuned at the bottom of this file.
+
+-- General tech / news (AI-adjacent)
+('thenextweb',             'The Next Web',                'rss', 'global',
+  '{"url":"https://thenextweb.com/feed"}',                                                           1800),
+('9to5google',             '9to5Google',                  'rss', 'global',
+  '{"url":"https://9to5google.com/feed/"}',                                                          1800),
+('techmeme',               'Techmeme',                    'rss', 'global',
+  '{"url":"https://www.techmeme.com/feed.xml"}',                                                     1800),
+('pragmatic-engineer',     'The Pragmatic Engineer',      'rss', 'global',
+  '{"url":"https://newsletter.pragmaticengineer.com/feed"}',                                         7200),
+
+-- AI-focused research / engineering / commentary
+('pytorch-blog',           'PyTorch Blog',                'rss', 'global',
+  '{"url":"https://pytorch.org/blog/feed.xml"}',                                                     3600),
+-- Apple Machine Learning at https://machinelearning.apple.com/rss.xml is
+-- AI-rich but the publisher ships unescaped `&` in titles (e.g. "Privacy-
+-- Preserving ML & AI"), making the XML invalid per spec. rss-parser rejects
+-- it. Would need a crawler with HTML entity cleanup — not adding the stub
+-- until someone wants to wire it up.
+('vercel-blog',            'Vercel Blog',                 'rss', 'global',
+  '{"url":"https://vercel.com/blog/feed.xml"}',                                                      3600),
+('spotify-engineering',    'Spotify Engineering',         'rss', 'global',
+  '{"url":"https://engineering.atspotify.com/feed"}',                                                21600),
+('meta-engineering',       'Engineering at Meta',         'rss', 'global',
+  '{"url":"https://engineering.fb.com/feed/"}',                                                      21600),
+('tom-tunguz',             'Tomasz Tunguz',               'rss', 'global',
+  '{"url":"https://tomtunguz.com/index.xml"}',                                                       7200),
+('searchengineland',       'Search Engine Land',          'rss', 'global',
+  '{"url":"https://searchengineland.com/feed"}',                                                     1800),
+('testingcatalog',         'TestingCatalog',              'rss', 'global',
+  '{"url":"https://www.testingcatalog.com/rss/"}',                                                   3600),
+-- corememory (Ashlee Vance podcast) dropped: feed parses fine but recent
+-- episode mix is too broad for an AI-only feed — covers aerospace history,
+-- journalism, etc. Claude relevance scorer flagged at 20%. Add a crawler
+-- with category filtering if first-party Vance coverage matters.
+('algorithmic-bridge',     'The Algorithmic Bridge',      'rss', 'global',
+  '{"url":"https://www.thealgorithmicbridge.com/feed"}',                                             7200),
+('understanding-ai',       'Understanding AI (Tim Lee)',  'rss', 'global',
+  '{"url":"https://www.understandingai.org/feed"}',                                                  7200),
+
 -- ============== Analyst newsletters ==============
 ('latent-space',           'Latent Space',                'rss', 'global',
   '{"url":"https://www.latent.space/feed"}',                                                         7200),
@@ -286,6 +341,10 @@ insert into sources (slug, name, kind, region, config, poll_interval_sec) values
   '{"base_url":"https://www.anthropic.com/engineering"}',                                            3600),
 ('claude-com-blog-crawled',   'Claude.com Product Blog (crawl)', 'crawler', 'global',
   '{"base_url":"https://claude.com/blog"}',                                                          3600),
+-- Cursor blog: no RSS endpoint exists. Stub kept for a future maintainer to
+-- wire up selectors / Playwright. Disabled by default below.
+('cursor-blog-crawled',       'Cursor Blog (crawl)',         'crawler', 'global',
+  '{"base_url":"https://cursor.com/blog","needs":"playwright"}',                                     3600),
 -- Need Playwright (JS-rendered SPAs / anti-bot 403s).
 ('xai-blog-crawled',          'xAI Blog (Playwright)',       'crawler', 'global',
   '{"base_url":"https://x.ai/blog","needs":"playwright"}',                                           3600),
@@ -330,6 +389,7 @@ update sources set enabled = false where slug in (
   'ai21-blog-crawled', 'langchain-crawled', 'pinecone-crawled',
   'anyscale-crawled', 'lightning-ai-crawled', 'stanford-hai-crawled',
   'anthropic-engineering-crawled', 'claude-com-blog-crawled',
+  'cursor-blog-crawled',
   'xai-blog-crawled', 'inflection-blog-crawled', 'cohere-blog-crawled',
   'perplexity-crawled', 'stability-crawled'
 );
@@ -381,7 +441,10 @@ update sources set reputation_weight = 1.4 where slug in (
   'alignment-forum', 'bair-berkeley',
   'platformer', 'big-technology', 'stratechery',
   'one-useful-thing', 'dont-worry-vase', 'dwarkesh-podcast',
-  '80000-hours'
+  '80000-hours',
+  -- 2026-05-22 additions: first-party engineering blogs from major
+  -- AI-operating companies. Same tier as the other first-party tech blogs.
+  'pytorch-blog', 'spotify-engineering', 'meta-engineering', 'vercel-blog'
 );
 
 update sources set reputation_weight = 1.2 where slug in (
@@ -391,11 +454,17 @@ update sources set reputation_weight = 1.2 where slug in (
   'last-week-in-ai', 'ai-snake-oil', 'marcus-on-ai', 'the-decoder',
   'robohub', 'ieee-spectrum-ai',
   'astral-codex-ten', 'the-generalist', '404-media', 'quanta-magazine',
-  'rest-of-world', 'ea-forum-ai'
+  'rest-of-world', 'ea-forum-ai',
+  -- 2026-05-22 additions: curated AI commentary / analyst tier
+  'pragmatic-engineer', 'techmeme', 'tom-tunguz', 'algorithmic-bridge',
+  'understanding-ai'
 );
 
 update sources set reputation_weight = 0.8 where slug in (
   'techcrunch-ai', 'venturebeat-ai', 'the-verge-ai',
   'ars-technica-ai', 'wired-ai', 'the-register-ai', 'zdnet-ai',
-  'axios-ai', 'cnbc-tech'
+  'axios-ai', 'cnbc-tech',
+  -- 2026-05-22 additions: broad tech journalism (heavy AI coverage but
+  -- often re-reports the primary source).
+  'thenextweb', '9to5google', 'searchengineland', 'testingcatalog'
 );

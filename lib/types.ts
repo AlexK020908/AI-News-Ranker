@@ -41,6 +41,7 @@ export const SOURCE_KINDS = [
   "reddit",
   "huggingface_models",
   "huggingface_datasets",
+  "huggingface_papers",
   "crawler",
   "custom",
 ] as const;
@@ -85,6 +86,10 @@ export interface Item {
   paper_citations: number | null;
   paper_influential_citations: number | null;
   paper_tldr: string | null;
+  // Plain-English explanation of the paper for non-academic readers,
+  // populated by the enrich job's CAVEMAN instruction. Null for all
+  // non-paper items.
+  caveman_summary: string | null;
   published_at: string | null;
   ingested_at: string;
   enriched_at: string | null;
@@ -130,7 +135,7 @@ export const SOURCE_GROUP_LABELS: Record<SourceGroup, string> = {
 };
 
 export const SOURCE_GROUP_KINDS: Record<SourceGroup, readonly SourceKind[]> = {
-  papers: ["arxiv"],
+  papers: ["arxiv", "huggingface_papers"],
   github: ["github_trending", "github_search"],
   huggingface: ["huggingface_models", "huggingface_datasets"],
   discussion: ["hackernews", "reddit"],

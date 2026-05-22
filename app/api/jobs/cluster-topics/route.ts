@@ -22,7 +22,28 @@ const WINDOW_HOURS = 48;
 // (different OpenAI announcements in the same week, etc.) sit around 0.72-0.80.
 // Tighten back to 0.78 if clusters start collapsing unrelated stories.
 const CLUSTER_THRESHOLD = 0.72;
-const MIN_CLUSTER_SIZE = 3;
+// Lower threshold for a second pass restricted to paper items. arXiv
+// preprints embed each other tightly when they share subject matter
+// (diffusion ↔ diffusion, RAG ↔ RAG) at 0.62-0.70. The standard 0.72
+// threshold leaves most thematic groups uncomputed, so papers show up
+// as 50 individual cards instead of "5 diffusion papers" / "8 agent
+// papers" rollups. 0.62 is the cosine floor below which AI papers
+// cease to share a subject area at all.
+const PAPER_CLUSTER_THRESHOLD = 0.62;
+// Default cluster size floor. arXiv papers are unique research and rarely
+// receive 3+ pieces of corroborating coverage, so we use a lower floor for
+// paper-majority clusters — see PAPER_MIN_CLUSTER_SIZE below.
+//
+// 2026-05-22: lowered from 3 → 2. The homepage row layout starves the
+// long-tail categories (news, release, discussion, announcement) of
+// clusters because most blog posts only have one outlet covering them,
+// and 3-member coverage is rare outside of frontier-lab announcements.
+// 2 still gates out random embedding noise pairs (you need both items to
+// independently land in the same 0.72 cosine bucket) but lets multi-
+// outlet news stories form clusters. Single-source items still go through
+// notable_solo_items.
+const MIN_CLUSTER_SIZE = 2;
+const PAPER_MIN_CLUSTER_SIZE = 2;
 const TOPIC_MATCH_THRESHOLD = 0.85;
 const STALE_HOURS = 72;
 const LABEL_CONCURRENCY = 3;
@@ -43,6 +64,7 @@ interface ItemRow {
   title: string;
   summary: string | null;
   importance: number | null;
+  category: string | null;
   published_at: string | null;
   ingested_at: string;
   // pgvector columns come back from the Supabase JS client as their text
@@ -94,7 +116,7 @@ export async function GET(req: NextRequest) {
   const since = new Date(Date.now() - WINDOW_HOURS * 3600 * 1000).toISOString();
   const { data: itemRows, error: iErr } = await supabase
     .from("items")
-    .select("id, title, summary, importance, published_at, ingested_at, embedding")
+    .select("id, title, summary, importance, category, published_at, ingested_at, embedding")
     .not("enriched_at", "is", null)
     .is("duplicate_of", null)
     .not("embedding", "is", null)
@@ -103,6 +125,7 @@ export async function GET(req: NextRequest) {
 
   if (iErr) return Response.json({ error: iErr.message }, { status: 500 });
   const items = (itemRows ?? []) as ItemRow[];
+  const categoryById = new Map(items.map((it) => [it.id, it.category] as const));
 
   const clusterInputs = items
     .map((it) => {
@@ -112,10 +135,58 @@ export async function GET(req: NextRequest) {
     })
     .filter((x): x is { id: string; embedding: number[]; importance: number | null } => x !== null);
 
-  const clusters = clusterByEmbedding(clusterInputs, {
+  // Pass 1 — tight clustering across ALL items at 0.72. Catches same-story
+  // multi-outlet coverage regardless of category.
+  const rawClusters = clusterByEmbedding(clusterInputs, {
     threshold: CLUSTER_THRESHOLD,
-    min_size: MIN_CLUSTER_SIZE,
+    min_size: PAPER_MIN_CLUSTER_SIZE,
   });
+
+  // Pass 2 — loose THEMATIC clustering over papers only, at 0.62. Catches
+  // subject-area groupings (all diffusion papers, all RAG papers, etc.).
+  // Restricted to papers because the looser threshold over mixed categories
+  // would collapse unrelated news stories.
+  const paperInputs = clusterInputs.filter(
+    (x) => categoryById.get(x.id) === "paper",
+  );
+  const paperThematicClusters = clusterByEmbedding(paperInputs, {
+    threshold: PAPER_CLUSTER_THRESHOLD,
+    min_size: 3, // require 3+ to mark something as a real theme
+  });
+
+  // Merge: prefer the tighter pass-1 cluster when an item appears in both.
+  // A paper that's part of a same-story pass-1 group (rare but possible)
+  // shouldn't get re-bucketed into the broader theme.
+  const claimedByPass1 = new Set<string>();
+  for (const c of rawClusters) {
+    for (const id of c.member_ids) claimedByPass1.add(id);
+  }
+  const thematicSurvivors = paperThematicClusters
+    .map((c) => ({
+      ...c,
+      member_ids: c.member_ids.filter((id) => !claimedByPass1.has(id)),
+    }))
+    .filter((c) => c.member_ids.length >= 3)
+    .map((c) => ({ ...c, member_count: c.member_ids.length }));
+
+  // Per-category gate on pass-1: papers ship at 2 members, everything else
+  // needs MIN_CLUSTER_SIZE. Pass-2 thematic clusters already required 3+
+  // above and bypass this gate.
+  const pass1Filtered = rawClusters.filter((c) => {
+    if (c.member_count >= MIN_CLUSTER_SIZE) return true;
+    const counts = new Map<string, number>();
+    for (const id of c.member_ids) {
+      const cat = categoryById.get(id) ?? "other";
+      counts.set(cat, (counts.get(cat) ?? 0) + 1);
+    }
+    let topCat = "other";
+    let topN = 0;
+    for (const [cat, n] of counts) {
+      if (n > topN) { topCat = cat; topN = n; }
+    }
+    return topCat === "paper" && c.member_count >= PAPER_MIN_CLUSTER_SIZE;
+  });
+  const clusters = [...pass1Filtered, ...thematicSurvivors];
 
   if (clusters.length === 0) {
     await pruneStaleTopics(supabase);

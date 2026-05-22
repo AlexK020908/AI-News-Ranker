@@ -19,6 +19,8 @@ export interface StackSource {
     // gradient + label combo is the thumbnail.
     imageUrl?: string | null;
   };
+  // Plain-English paper explanation. Only populated for paper-category items.
+  cavemanSummary?: string | null;
 }
 
 export interface StackCluster {
@@ -35,6 +37,11 @@ export interface StackCluster {
   // recent observation window. Surfaced as a flame badge.
   rising: boolean;
   sources: StackSource[];
+  // Caveman explanation for paper clusters. Picked from the highest-
+  // importance member's caveman_summary so the card has a single, stable
+  // plain-English blurb regardless of which paper rotates into the
+  // thumbnail slot. Null when the cluster isn't paper-majority.
+  cavemanSummary?: string | null;
 }
 
 export interface StackTopic {
