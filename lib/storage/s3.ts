@@ -135,6 +135,21 @@ function tripBreaker(host: string | null, ms: number): void {
   if (until > existing) hostBlockedUntil.set(host, until);
 }
 
+// Snapshot of currently-blocked hosts. Callers use this to filter rows out
+// of backfill queries so the same rate-limited rows don't keep filling
+// every batch.
+export function getBlockedHosts(): Array<{ host: string; secondsRemaining: number }> {
+  const now = Date.now();
+  const result: Array<{ host: string; secondsRemaining: number }> = [];
+  for (const [host, until] of hostBlockedUntil) {
+    const remaining = until - now;
+    if (remaining > 0) {
+      result.push({ host, secondsRemaining: Math.ceil(remaining / 1000) });
+    }
+  }
+  return result;
+}
+
 let cached: Storage | null = null;
 
 export function getStorage(): Storage {
