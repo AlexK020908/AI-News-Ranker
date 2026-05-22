@@ -28,13 +28,16 @@ export interface UploadedThumbnail {
 }
 
 // Outcome categories for a thumbnail upload attempt:
-//   - "uploaded": success; caller writes key to items.s3_storage_id
-//   - "transient": rate-limit, 5xx, network timeout — caller should NOT
-//                  dead-letter; the next backfill round will retry
+//   - "uploaded":  success; caller writes key to items.s3_storage_id
+//   - "blocked":   host's circuit breaker is tripped (no fetch attempted);
+//                  caller leaves the row untouched — it doesn't count toward
+//                  retry exhaustion because nothing was actually tried
+//   - "transient": rate-limit, 5xx, network timeout, S3 put fail — caller
+//                  increments a retry counter; row stays eligible until the
+//                  counter exceeds the cap, then it dead-letters
 //   - "permanent": 404, oversize, non-image content-type, processing fail —
-//                  caller dead-letters via raw.thumbnail_attempted_at so the
-//                  row stops cycling through future backfills
-export type UploadOutcome = "uploaded" | "transient" | "permanent";
+//                  caller dead-letters immediately
+export type UploadOutcome = "uploaded" | "blocked" | "transient" | "permanent";
 
 export interface UploadResult {
   outcome: UploadOutcome;
@@ -285,6 +288,7 @@ async function processImage(
 // decide whether to dead-letter.
 type SourceFetchResult =
   | { kind: "ok"; body: ArrayBuffer; contentType: string }
+  | { kind: "blocked"; reason: string }
   | { kind: "transient"; reason: string }
   | { kind: "permanent"; reason: string };
 
@@ -293,10 +297,11 @@ async function fetchSourceWithRetry(sourceUrl: string): Promise<SourceFetchResul
 
   // Circuit breaker: if this host recently 429'd, skip the network round-trip
   // entirely. The next backfill round will pick the row up after the window
-  // resets.
+  // resets. "blocked" is distinct from "transient" so it doesn't count toward
+  // the retry-exhaustion threshold.
   const blockedMs = hostBlockedRemainingMs(host);
   if (blockedMs > 0) {
-    return { kind: "transient", reason: `host blocked for ${Math.ceil(blockedMs / 1000)}s` };
+    return { kind: "blocked", reason: `host blocked for ${Math.ceil(blockedMs / 1000)}s` };
   }
 
   await throttleForHost(host);
