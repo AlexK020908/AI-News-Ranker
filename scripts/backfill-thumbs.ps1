@@ -44,10 +44,28 @@ for ($i = 1; $i -le $MaxRounds; $i++) {
   $batch   = [int]$resp.batch
   $updated = [int]$resp.updated
   $skipped = [int]$resp.skipped
+  $blocked = $resp.blocked
   Write-Host ("[round {0}] batch={1} updated={2} skipped={3}" -f $i, $batch, $updated, $skipped)
+  if ($blocked) {
+    foreach ($b in $blocked) {
+      Write-Host ("  blocked: {0} for {1}s" -f $b.host, $b.secondsRemaining)
+    }
+  }
   $total += $updated
 
-  if ($batch -eq 0) { break }
+  if ($batch -eq 0) {
+    # No rows match the (un-blocked, un-attempted) query. If we have an
+    # active host block, sleep until it clears — there are likely blocked
+    # rows still in the DB that will become eligible. Otherwise we're done.
+    if ($blocked) {
+      $maxBlock = ($blocked | Measure-Object -Property secondsRemaining -Maximum).Maximum
+      $wait = [Math]::Min(120, [Math]::Max(5, [int]$maxBlock + 2))
+      Write-Host ("  no eligible rows now; waiting {0}s for host block to clear" -f $wait)
+      Start-Sleep -Seconds $wait
+      continue
+    }
+    break
+  }
 
   if ($updated -eq 0) {
     $stall++
@@ -55,8 +73,16 @@ for ($i = 1; $i -le $MaxRounds; $i++) {
       Write-Host "  ! $stall consecutive empty rounds -- giving up; re-run later"
       break
     }
-    Write-Host ("  ... no progress (host rate-limited?); sleeping {0}s" -f $StallSleepSec)
-    Start-Sleep -Seconds $StallSleepSec
+    # If the server reports an active block, wait that out; otherwise the
+    # default stall sleep covers transient network blips.
+    if ($blocked) {
+      $maxBlock = ($blocked | Measure-Object -Property secondsRemaining -Maximum).Maximum
+      $wait = [Math]::Min(120, [Math]::Max(5, [int]$maxBlock + 2))
+    } else {
+      $wait = $StallSleepSec
+    }
+    Write-Host ("  ... no progress; sleeping {0}s" -f $wait)
+    Start-Sleep -Seconds $wait
   } else {
     $stall = 0
   }

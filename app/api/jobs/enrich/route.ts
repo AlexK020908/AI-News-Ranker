@@ -9,7 +9,7 @@ import {
 } from "@/lib/anthropic/semantic-scholar";
 import { isAuthorizedJob } from "@/lib/job-auth";
 import { runPool } from "@/lib/utils";
-import { getStorage } from "@/lib/storage/s3";
+import { getBlockedHosts, getStorage } from "@/lib/storage/s3";
 import { fetchPageOgImage, githubRepoOgImage } from "@/lib/ingest/og-image";
 import { DEFAULT_REGION, type SourceKind } from "@/lib/types";
 
@@ -184,11 +184,17 @@ export const POST = GET;
 async function runThumbnailBackfill(limit: number): Promise<Response> {
   try {
     const supabase = createSupabaseServiceClient();
+    // Skip rows whose candidate URL is on a currently-blocked host. Without
+    // this, the same 50 rate-limited rows fill every batch and the script
+    // stalls — even though there are non-blocked rows further back that
+    // could be processed right now.
+    const blocked = getBlockedHosts();
+
     // Target enriched-but-thumbnailless rows that we haven't already tried.
     // The `raw->>thumbnail_attempted_at` filter is what stops 404s and
     // oversized URLs from cycling forever — once we've tried and failed,
     // the row is excluded from future backfill batches.
-    const { data, error } = await supabase
+    let query = supabase
       .from("items")
       .select(
         "id, source_id, title, url, author, content, published_at, region, raw, external_id, s3_storage_id, source:sources!inner(slug, name, kind, reputation_weight)",
@@ -196,7 +202,16 @@ async function runThumbnailBackfill(limit: number): Promise<Response> {
       .not("enriched_at", "is", null)
       .is("s3_storage_id", null)
       .is("duplicate_of", null)
-      .filter("raw->>thumbnail_attempted_at", "is", null)
+      .filter("raw->>thumbnail_attempted_at", "is", null);
+
+    for (const { host } of blocked) {
+      // Exclude rows whose candidate URL contains this host. Substring match
+      // via not-ilike — fine because blocked hosts are full FQDNs unlikely
+      // to appear inside another URL's path.
+      query = query.not("raw->>thumbnail_candidate_url", "ilike", `%${host}%`);
+    }
+
+    const { data, error } = await query
       .order("ingested_at", { ascending: false })
       .limit(limit);
 
@@ -225,7 +240,17 @@ async function runThumbnailBackfill(limit: number): Promise<Response> {
       updated++;
     });
 
-    return Response.json({ ok: true, mode: "backfill_thumbs", batch: rows.length, updated, skipped });
+    // Re-snapshot after processing — fresh 429s during the run can add new
+    // entries the caller will want to see.
+    const blockedAfter = getBlockedHosts();
+    return Response.json({
+      ok: true,
+      mode: "backfill_thumbs",
+      batch: rows.length,
+      updated,
+      skipped,
+      blocked: blockedAfter.length > 0 ? blockedAfter : undefined,
+    });
   } catch (e) {
     return Response.json({ ok: false, error: (e as Error).message }, { status: 500 });
   }
