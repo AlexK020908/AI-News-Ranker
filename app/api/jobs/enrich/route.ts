@@ -310,13 +310,23 @@ function rawTransientCount(raw: Record<string, unknown> | null): number {
 // Skip sources where fetching the page for og:image is wasteful or hostile:
 //   - arxiv abstract pages return the arXiv logo, not a paper-specific image
 //   - HN item pages have no useful card
-//   - HuggingFace model pages have og:image, but they're generic site cards
+//   - HuggingFace model/dataset pages share a generic site og:image —
+//     but /blog/* posts have real per-article images, so allow those.
 function shouldDeriveOgImageFor(r: UnenrichedRow): boolean {
   const host = safeHostname(r.url);
   if (!host) return false;
   if (host.endsWith("arxiv.org")) return false;
   if (host.endsWith("news.ycombinator.com")) return false;
-  if (host === "huggingface.co" || host.endsWith(".huggingface.co")) return false;
+  if (host === "huggingface.co" || host.endsWith(".huggingface.co")) {
+    // Blog posts have per-article og:image; everything else (model, dataset,
+    // space, user pages) shares the generic HuggingFace site card.
+    try {
+      const path = new URL(r.url).pathname;
+      return path.startsWith("/blog/");
+    } catch {
+      return false;
+    }
+  }
   return true;
 }
 
