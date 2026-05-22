@@ -1,0 +1,29 @@
+[Unit]
+Description=AI News Feed Next.js App
+After=network-online.target
+Wants=network-online.target
+# Cap restart churn so a wedged config (Supabase unavailable, missing
+# env vars, port collision) doesn't tight-loop ~50ms apart and swamp
+# journald.
+StartLimitIntervalSec=300
+StartLimitBurst=10
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/ai-news-feed
+# /opt/ai-news-feed IS the unpacked .next/standalone tree, so server.js
+# (the Next.js standalone entrypoint, see next.config.ts → output:
+# "standalone") sits at the working dir root with its traced node_modules
+# next to it. Static assets must live at .next/static/ and public/ at
+# public/ inside this same tree — the CI workflow places them there.
+ExecStart=/usr/bin/node server.js
+Restart=always
+RestartSec=10
+EnvironmentFile=/opt/ai-news-feed/.env
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=ai-news-feed-app
+
+[Install]
+WantedBy=multi-user.target

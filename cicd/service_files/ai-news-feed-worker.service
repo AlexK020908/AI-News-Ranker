@@ -1,0 +1,29 @@
+[Unit]
+Description=AI News Feed Ingest Worker (ingest -> enrich -> cluster -> notify -> digest)
+After=network-online.target ai-news-feed-app.service
+Wants=network-online.target
+Requires=ai-news-feed-app.service
+# Cap restart churn so an upstream app outage or DB flap at boot doesn't
+# tight-loop the worker ~50ms apart and swamp journald.
+StartLimitIntervalSec=300
+StartLimitBurst=10
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/ai-news-feed
+# scripts/worker.mjs hits the four job endpoints on WORKER_TARGET every
+# WORKER_INTERVAL_SEC seconds with `Authorization: Bearer $CRON_SECRET`.
+# Defaults: WORKER_TARGET=http://app:3000 (Docker), WORKER_INTERVAL_SEC=900.
+# For systemd on a single host, override WORKER_TARGET in /opt/ai-news-feed/.env
+# (typically http://127.0.0.1:3000 — the app unit binds 127.0.0.1).
+ExecStart=/usr/bin/node scripts/worker.mjs
+Restart=always
+RestartSec=10
+EnvironmentFile=/opt/ai-news-feed/.env
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=ai-news-feed-worker
+
+[Install]
+WantedBy=multi-user.target

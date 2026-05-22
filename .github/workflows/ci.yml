@@ -1,0 +1,198 @@
+# Repository secrets (Settings → Secrets and variables → Actions):
+#   Required: NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY,
+#             SUPABASE_SERVICE_ROLE_KEY, ANTHROPIC_API_KEY, CRON_SECRET
+#   Optional: REDIS_URL, VOYAGE_API_KEY, GITHUB_TOKEN_INGEST,
+#             SEMANTIC_SCHOLAR_API_KEY, DISCORD_WEBHOOK_URL,
+#             ITEM_RETENTION_DAYS, NEXT_PUBLIC_SITE_URL,
+#             S3_BUCKET, S3_REGION, S3_ENDPOINT, S3_FORCE_PATH_STYLE,
+#             S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY, S3_PUBLIC_BASE_URL,
+#             WORKER_TARGET, WORKER_INTERVAL_SEC
+# Fork PRs do not receive secrets (GitHub default).
+#
+# Self-hosted runner: sudo for tee + systemctl + rsync; services
+# ai-news-feed-app / ai-news-feed-worker; deploy tree under
+# /opt/ai-news-feed (see cicd/service_files/*.service).
+#
+# This project uses Next.js 16 standalone output (see next.config.ts). After
+# `npm run build` the runtime tree lives in `.next/standalone/` (server.js
+# + traced node_modules) with static assets in `.next/static/`. We rsync
+# both, plus `public/` and `scripts/worker.mjs`, into /opt/ai-news-feed.
+
+name: CI
+
+on:
+  push:
+    branches: main
+  pull_request:
+
+jobs:
+  setup:
+    runs-on: self-hosted
+    steps:
+      - name: Write deploy .env file
+        if: github.event_name == 'push'
+        run: |
+          sudo mkdir -p /opt/ai-news-feed
+          sudo tee /opt/ai-news-feed/.env > /dev/null <<EOF
+          NODE_ENV=production
+          NEXT_TELEMETRY_DISABLED=1
+          PORT=3000
+          HOSTNAME=127.0.0.1
+          NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}
+          VOYAGE_API_KEY=${{ secrets.VOYAGE_API_KEY }}
+          CRON_SECRET=${{ secrets.CRON_SECRET }}
+          ITEM_RETENTION_DAYS=${{ secrets.ITEM_RETENTION_DAYS }}
+          NEXT_PUBLIC_SITE_URL=${{ secrets.NEXT_PUBLIC_SITE_URL }}
+          GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN_INGEST }}
+          SEMANTIC_SCHOLAR_API_KEY=${{ secrets.SEMANTIC_SCHOLAR_API_KEY }}
+          REDIS_URL=${{ secrets.REDIS_URL }}
+          DISCORD_WEBHOOK_URL=${{ secrets.DISCORD_WEBHOOK_URL }}
+          S3_BUCKET=${{ secrets.S3_BUCKET }}
+          S3_REGION=${{ secrets.S3_REGION }}
+          S3_ENDPOINT=${{ secrets.S3_ENDPOINT }}
+          S3_FORCE_PATH_STYLE=${{ secrets.S3_FORCE_PATH_STYLE }}
+          S3_ACCESS_KEY_ID=${{ secrets.S3_ACCESS_KEY_ID }}
+          S3_SECRET_ACCESS_KEY=${{ secrets.S3_SECRET_ACCESS_KEY }}
+          S3_PUBLIC_BASE_URL=${{ secrets.S3_PUBLIC_BASE_URL }}
+          WORKER_TARGET=${{ secrets.WORKER_TARGET }}
+          WORKER_INTERVAL_SEC=${{ secrets.WORKER_INTERVAL_SEC }}
+          EOF
+
+  app:
+    needs: setup
+    runs-on: self-hosted
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run lint
+      # NEXT_PUBLIC_* values are inlined at build time, so they need to be in
+      # the environment of `next build` — not just the runtime .env. Anything
+      # the build calls (e.g. supabase client init during static prerender)
+      # also needs its secrets here.
+      - name: Next.js build
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          NEXT_PUBLIC_SITE_URL: ${{ secrets.NEXT_PUBLIC_SITE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: npm run build
+      # Next.js standalone output layout:
+      #   .next/standalone/server.js           ← entrypoint (`node server.js`)
+      #   .next/standalone/node_modules/       ← traced runtime deps only
+      #   .next/static/                        ← must sit at .next/static/ inside the standalone tree
+      #   public/                              ← must sit at public/ inside the standalone tree
+      # The systemd unit's WorkingDirectory is /opt/ai-news-feed and ExecStart
+      # is `node server.js`, so the standalone tree IS the deploy root. Keep
+      # /opt/ai-news-feed/.env across rsync — that's the EnvironmentFile.
+      - name: Sync standalone build to deploy path
+        if: github.event_name == 'push'
+        run: |
+          sudo mkdir -p /opt/ai-news-feed
+          sudo rsync -a --delete \
+            --exclude '.env' \
+            --exclude 'public' \
+            --exclude '.next/static' \
+            .next/standalone/ /opt/ai-news-feed/
+          sudo mkdir -p /opt/ai-news-feed/.next
+          sudo rsync -a --delete .next/static/ /opt/ai-news-feed/.next/static/
+          sudo rsync -a --delete public/ /opt/ai-news-feed/public/
+      - name: Sync worker script to deploy path
+        if: github.event_name == 'push'
+        run: |
+          sudo mkdir -p /opt/ai-news-feed/scripts
+          sudo rsync -a scripts/worker.mjs /opt/ai-news-feed/scripts/worker.mjs
+      - name: Hand off deploy tree to service user
+        if: github.event_name == 'push'
+        run: sudo chown -R ubuntu:ubuntu /opt/ai-news-feed
+
+  nginx:
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+      - name: Sync nginx config to deploy path
+        if: github.event_name == 'push'
+        run: |
+          sudo mkdir -p /opt/ai-news-feed/nginx
+          sudo rsync -a nginx/nginx.conf /opt/ai-news-feed/nginx/nginx.conf
+
+  supabase:
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+      - name: Sync supabase migrations + seed to deploy path
+        if: github.event_name == 'push'
+        run: |
+          sudo mkdir -p /opt/ai-news-feed/supabase
+          sudo rsync -a --delete supabase/ /opt/ai-news-feed/supabase/
+
+  deploy:
+    if: github.event_name == 'push'
+    needs: [app, nginx, supabase]
+    runs-on: self-hosted
+    steps:
+      - name: Restart app
+        run: sudo systemctl restart ai-news-feed-app
+
+      - name: Restart worker
+        run: |
+          if systemctl list-unit-files ai-news-feed-worker.service >/dev/null 2>&1; then
+            sudo systemctl restart ai-news-feed-worker
+          else
+            echo "ai-news-feed-worker.service not installed on runner; skipping"
+          fi
+
+      - name: Reload nginx
+        run: |
+          if systemctl list-unit-files nginx.service >/dev/null 2>&1; then
+            sudo nginx -t && sudo systemctl reload nginx
+          else
+            echo "nginx.service not installed on runner; skipping"
+          fi
+
+      - name: Health check app
+        run: |
+          for i in {1..12}; do
+            # Next.js doesn't ship a /health route by default — hit the root.
+            # Swap this for an explicit /health route once one exists.
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/ || echo "000")
+            case "$code" in
+              200|301|302|307|308)
+                echo "ai-news-feed-app is healthy ($code)"
+                exit 0
+                ;;
+            esac
+            sleep 5
+          done
+          echo "Health check failed for ai-news-feed-app"
+          sudo systemctl status ai-news-feed-app --no-pager || true
+          sudo journalctl -u ai-news-feed-app -n 80 --no-pager || true
+          exit 1
+
+      - name: Verify worker active
+        run: |
+          if ! systemctl list-unit-files ai-news-feed-worker.service >/dev/null 2>&1; then
+            echo "worker not installed; skipping verify"
+            exit 0
+          fi
+          for i in {1..12}; do
+            if systemctl is-active --quiet ai-news-feed-worker; then
+              echo "ai-news-feed-worker is active"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "ai-news-feed-worker is not active"
+          sudo systemctl status ai-news-feed-worker --no-pager || true
+          sudo journalctl -u ai-news-feed-worker -n 80 --no-pager || true
+          exit 1
