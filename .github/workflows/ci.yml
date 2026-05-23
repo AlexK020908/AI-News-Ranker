@@ -99,10 +99,17 @@ jobs:
         if: github.event_name == 'push'
         run: |
           sudo mkdir -p /opt/ai-news-feed
+          # nginx/ and supabase/ are populated by sibling jobs running in
+          # parallel. Without excluding them, --delete would race those jobs
+          # and wipe their output. Same for the worker script written by the
+          # next step in this job. .env is the runtime EnvironmentFile.
           sudo rsync -a --delete \
             --exclude '.env' \
             --exclude 'public' \
             --exclude '.next/static' \
+            --exclude 'nginx' \
+            --exclude 'supabase' \
+            --exclude 'scripts' \
             .next/standalone/ /opt/ai-news-feed/
           sudo mkdir -p /opt/ai-news-feed/.next
           sudo rsync -a --delete .next/static/ /opt/ai-news-feed/.next/static/
