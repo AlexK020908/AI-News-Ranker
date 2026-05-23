@@ -7,3 +7,6 @@ ssh -i .\ai-news-feed.pem ec2-user@18.118.112.102
 
 sudo nginx -t                   # syntax check
 sudo systemctl enable --now nginx
+
+
+sss
