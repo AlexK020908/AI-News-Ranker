@@ -71,6 +71,11 @@ export function StackApp({
   useEffect(() => {
     try {
       const onbSeen = localStorage.getItem("stack.onb");
+      // Lazy useState initializer would read localStorage during SSR (where
+      // it's undefined) and trigger a hydration mismatch. Setting here on
+      // mount is the intentional pattern — see comment above on why this
+      // effect exists.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       if (!onbSeen) setShowOnb(true);
     } catch {
       /* private mode — show by default */

@@ -263,7 +263,7 @@ export async function GET(req: NextRequest) {
       return;
     }
 
-    let topicId: string | null = match?.id ?? null;
+    const topicId: string | null = match?.id ?? null;
     let label: string;
     let summary: string | null;
     let slug: string;
