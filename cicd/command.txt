@@ -1,0 +1,6 @@
+ssh -i .\ai-news-feed.pem ec2-user@18.118.112.102
+
+
+  sudo ./svc.sh install ec2-user
+  sudo ./svc.sh start
+  sudo ./svc.sh status

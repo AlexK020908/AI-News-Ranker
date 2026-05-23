@@ -1,7 +1,7 @@
 # Repository secrets (Settings → Secrets and variables → Actions):
 #   Required: NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY,
 #             SUPABASE_SERVICE_ROLE_KEY, ANTHROPIC_API_KEY, CRON_SECRET
-#   Optional: REDIS_URL, VOYAGE_API_KEY, GITHUB_TOKEN_INGEST,
+#   Optional: REDIS_URL, VOYAGE_API_KEY, GH_TOKEN_INGEST,
 #             SEMANTIC_SCHOLAR_API_KEY, DISCORD_WEBHOOK_URL,
 #             ITEM_RETENTION_DAYS, NEXT_PUBLIC_SITE_URL,
 #             S3_BUCKET, S3_REGION, S3_ENDPOINT, S3_FORCE_PATH_STYLE,
@@ -46,7 +46,7 @@ jobs:
           CRON_SECRET=${{ secrets.CRON_SECRET }}
           ITEM_RETENTION_DAYS=${{ secrets.ITEM_RETENTION_DAYS }}
           NEXT_PUBLIC_SITE_URL=${{ secrets.NEXT_PUBLIC_SITE_URL }}
-          GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN_INGEST }}
+          GITHUB_TOKEN=${{ secrets.GH_TOKEN_INGEST }}
           SEMANTIC_SCHOLAR_API_KEY=${{ secrets.SEMANTIC_SCHOLAR_API_KEY }}
           REDIS_URL=${{ secrets.REDIS_URL }}
           DISCORD_WEBHOOK_URL=${{ secrets.DISCORD_WEBHOOK_URL }}
