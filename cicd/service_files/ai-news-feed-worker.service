@@ -10,7 +10,7 @@ StartLimitBurst=10
 
 [Service]
 Type=simple
-User=ubuntu
+User=ec2-user
 WorkingDirectory=/opt/ai-news-feed
 # scripts/worker.mjs hits the four job endpoints on WORKER_TARGET every
 # WORKER_INTERVAL_SEC seconds with `Authorization: Bearer $CRON_SECRET`.

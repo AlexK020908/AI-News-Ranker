@@ -114,7 +114,7 @@ jobs:
           sudo rsync -a scripts/worker.mjs /opt/ai-news-feed/scripts/worker.mjs
       - name: Hand off deploy tree to service user
         if: github.event_name == 'push'
-        run: sudo chown -R ubuntu:ubuntu /opt/ai-news-feed
+        run: sudo chown -R ec2-user:ec2-user /opt/ai-news-feed
 
   nginx:
     runs-on: self-hosted
