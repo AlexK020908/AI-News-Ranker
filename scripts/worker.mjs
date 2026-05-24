@@ -38,7 +38,12 @@ const ENDPOINTS = [
   // first pass). Small batch so we trickle through without spiking Claude
   // spend; the route's raw.caveman_backfilled_at marker means once everything
   // is processed the call returns batch:0 instantly and costs nothing.
-  { name: "enrich-caveman", path: "/api/jobs/enrich?backfill_caveman=1&limit=50", timeoutMs: 240_000 },
+  // Tuned for the worker's per-tick budget: at concurrency=3 on the server,
+  // 25 paper enrichments fits comfortably under the timeout even on
+  // content-heavy abstracts. limit=50 was timing out — when the worker
+  // aborts, the server may still finish, so we lose the response payload
+  // AND risk overlapping next-tick work.
+  { name: "enrich-caveman", path: "/api/jobs/enrich?backfill_caveman=1&limit=25", timeoutMs: 300_000 },
   { name: "cluster-topics", path: "/api/jobs/cluster-topics", timeoutMs: 240_000 },
   { name: "notify",         path: "/api/jobs/notify",         timeoutMs: 60_000  },
   { name: "digest",         path: "/api/jobs/digest",         timeoutMs: 120_000 },
