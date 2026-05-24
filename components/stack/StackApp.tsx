@@ -13,6 +13,7 @@ import { ClusterCard } from "./ClusterCard";
 import { ClusterDetail } from "./ClusterDetail";
 import { Onboarding } from "./Onboarding";
 import { RisingStrip } from "./RisingStrip";
+import { SubscribeModal } from "./SubscribeModal";
 import { TopicRow } from "./TopicRow";
 import { TrendingReposStrip } from "./TrendingReposStrip";
 
@@ -58,6 +59,7 @@ export function StackApp({
   const [topic, setTopic] = useState("all");
   const [detailId, setDetailId] = useState<string | null>(null);
   const [showOnb, setShowOnb] = useState(false);
+  const [showSub, setShowSub] = useState(false);
   // Multi-select category subset for the "All" view. Default = every
   // category enabled (no filtering). Hydrated from localStorage on mount.
   const [enabledCategories, setEnabledCategories] = useState<ReadonlySet<Category>>(
@@ -196,6 +198,7 @@ export function StackApp({
         setTheme={(th) => setDark(th === "dark")}
         onLogo={() => { setDetailId(null); setTopic("all"); }}
         onShowOnb={() => setShowOnb(true)}
+        onShowSubscribe={() => setShowSub(true)}
         scrolled={scrollY > 8}
       />
 
@@ -283,6 +286,7 @@ export function StackApp({
       )}
 
       {showOnb && <Onboarding onDone={onOnbDone} />}
+      {showSub && <SubscribeModal onClose={() => setShowSub(false)} />}
     </>
   );
 }

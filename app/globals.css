@@ -190,7 +190,7 @@ button:disabled { cursor: not-allowed; }
   cursor: pointer;
 }
 .brand__mark {
-  width: 22px;
+  width: 24px;
   height: 22px;
   border-radius: 6px;
   display: grid;
@@ -198,8 +198,9 @@ button:disabled { cursor: not-allowed; }
   background: var(--text);
   color: var(--bg);
   font-weight: 700;
-  font-size: 12px;
+  font-size: 11px;
   font-family: var(--mono);
+  letter-spacing: -0.02em;
 }
 .brand__name { letter-spacing: 0; }
 .brand__dot { color: var(--accent); }
@@ -1397,5 +1398,143 @@ button:disabled { cursor: not-allowed; }
   border-radius: 50%;
   background: var(--accent);
   flex-shrink: 0;
+}
+
+/* ============ Nav Subscribe CTA ============ */
+/* Distinct from .nav__link (which is a destination/route marker) and from
+   .icon-btn (which is a square glyph). The CTA carries accent fill to pull
+   the eye — Subscribe is the primary conversion action on the page. */
+.nav__cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 13px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #0a0a0c;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  transition: filter .15s, transform .1s;
+}
+.nav__cta:hover { filter: brightness(1.08); }
+.nav__cta:active { transform: translateY(1px); }
+.nav__cta svg { opacity: 0.85; }
+
+/* ============ Subscribe modal ============ */
+/* Layered on top of .onb / .onb-mask. Reuses the dimensions and animation
+   from Onboarding so the two overlays feel like one design system; the
+   .sub-* helpers add form-control styles that Onboarding didn't need. */
+.sub-modal { gap: 18px; max-height: calc(100vh - 48px); overflow-y: auto; }
+.sub-row { display: flex; flex-direction: column; gap: 8px; }
+.sub-label {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.sub-label__val {
+  color: var(--accent);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+.sub-input {
+  width: 100%;
+  padding: 11px 13px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 13px;
+  outline: none;
+  transition: border-color .15s, background .15s;
+}
+.sub-input:focus {
+  border-color: var(--accent);
+  background: var(--surface);
+}
+.sub-input::placeholder { color: var(--faint); }
+.sub-hint {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+.sub-error {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: #f87171;
+  padding: 10px 12px;
+  background: rgba(248, 113, 113, 0.08);
+  border: 1px solid rgba(248, 113, 113, 0.24);
+  border-radius: 8px;
+}
+
+/* Segmented control — used for Email/Discord and Digest/Alerts toggles.
+   Two equal halves; the pressed half lights up with the accent. Built
+   as buttons (not radios) because the modal-side selection map is the
+   source of truth, not form state. */
+.seg {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 3px;
+  gap: 3px;
+}
+.seg__btn {
+  padding: 9px 12px;
+  border-radius: 7px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-2);
+  transition: background .15s, color .15s;
+}
+.seg__btn:hover { color: var(--text); }
+.seg__btn[aria-pressed="true"] {
+  background: var(--accent);
+  color: #0a0a0c;
+}
+
+/* Range slider — restyled because the browser default looks terrible
+   against the dark UI. WebKit and Mozilla need separate selectors for
+   the thumb; both fall through to the underlying input behavior. */
+.sub-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 4px;
+  background: var(--surface-2);
+  border-radius: 999px;
+  outline: none;
+  cursor: pointer;
+}
+.sub-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--bg-elev);
+  cursor: pointer;
+  transition: transform .1s;
+}
+.sub-slider::-webkit-slider-thumb:hover { transform: scale(1.1); }
+.sub-slider::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--bg-elev);
+  cursor: pointer;
 }
 

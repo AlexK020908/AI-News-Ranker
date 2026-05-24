@@ -21,4 +21,4 @@ export interface AdapterResult {
 
 export type Adapter = (ctx: IngestContext) => Promise<AdapterResult>;
 
-export const USER_AGENT = "ai-news-feed/0.1 (+https://ai-news-feed.local)";
+export const USER_AGENT = "stackBrief/0.1 (+https://stackbrief.tech)";

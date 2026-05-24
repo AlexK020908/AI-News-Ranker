@@ -18,6 +18,10 @@ interface Props {
   setTheme: (t: "dark" | "light") => void;
   onLogo?: () => void;
   onShowOnb: () => void;
+  // Open the SubscribeModal. The button only renders on routes where the
+  // parent passes the handler — keeps standalone item/repo/search pages
+  // free of CTAs that depend on home-page state.
+  onShowSubscribe?: () => void;
   scrolled: boolean;
 }
 
@@ -30,6 +34,7 @@ export function Nav({
   setTheme,
   onLogo,
   onShowOnb,
+  onShowSubscribe,
   scrolled,
 }: Props) {
   const pathname = usePathname();
@@ -41,13 +46,13 @@ export function Nav({
       <div className="nav__inner">
         {isHome ? (
           <div className="brand" onClick={onLogo}>
-            <span className="brand__mark">S</span>
-            <span className="brand__name">stack<span className="brand__dot">.</span></span>
+            <span className="brand__mark">sB</span>
+            <span className="brand__name">stackBrief<span className="brand__dot">.</span></span>
           </div>
         ) : (
           <Link href="/" className="brand">
-            <span className="brand__mark">S</span>
-            <span className="brand__name">stack<span className="brand__dot">.</span></span>
+            <span className="brand__mark">sB</span>
+            <span className="brand__name">stackBrief<span className="brand__dot">.</span></span>
           </Link>
         )}
 
@@ -104,6 +109,19 @@ export function Nav({
               enabled={enabledCategories}
               setEnabled={setEnabledCategories}
             />
+          )}
+          {onShowSubscribe && (
+            <button
+              className="nav__cta"
+              onClick={onShowSubscribe}
+              aria-label="Subscribe"
+            >
+              <svg width="13" height="13" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                <path d="M2 3h10v8H2z" stroke="currentColor" strokeWidth="1.4" />
+                <path d="M2 3l5 4 5-4" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
+              </svg>
+              Subscribe
+            </button>
           )}
           <button className="icon-btn" title="Edit interests" onClick={onShowOnb} aria-label="Interests">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none">

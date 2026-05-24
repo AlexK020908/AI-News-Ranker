@@ -47,13 +47,13 @@ async function handle(req: NextRequest): Promise<Response> {
     return Response.json({ error: delErr.message }, { status: 500 });
   }
 
-  return renderHtml("Unsubscribed. You'll stop receiving ai-news-feed pings.", 200);
+  return renderHtml("Unsubscribed. You'll stop receiving stackBrief alerts.", 200);
 }
 
 function renderHtml(message: string, status: number): Response {
-  const body = `<!doctype html><html><head><meta charset="utf-8"><title>ai-news-feed</title>
-<style>body{background:#0a0a0a;color:#e5e5e5;font-family:system-ui,sans-serif;display:grid;place-items:center;min-height:100vh;margin:0}main{max-width:32rem;padding:2rem;text-align:center}a{color:#a78bfa}</style>
-</head><body><main><h1 style="font-size:1.25rem;margin-bottom:1rem">ai-news-feed</h1><p>${escape(message)}</p><p><a href="/">← back to feed</a></p></main></body></html>`;
+  const body = `<!doctype html><html><head><meta charset="utf-8"><title>stackBrief</title>
+<style>body{background:#0a0a0c;color:#ececef;font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',sans-serif;display:grid;place-items:center;min-height:100vh;margin:0}main{max-width:32rem;padding:2rem;text-align:center}a{color:#f5a73c}</style>
+</head><body><main><h1 style="font-size:1.25rem;margin-bottom:1rem">stackBrief</h1><p>${escape(message)}</p><p><a href="/">← back to feed</a></p></main></body></html>`;
   return new Response(body, {
     status,
     headers: { "content-type": "text/html; charset=utf-8" },
