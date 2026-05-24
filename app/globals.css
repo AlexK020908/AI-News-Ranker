@@ -1044,8 +1044,16 @@ button:disabled { cursor: not-allowed; }
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   z-index: 100;
-  display: grid;
-  place-items: center;
+  /* Flex + margin:auto on the child centers the modal when it fits, but
+     lets it pin to the top and scroll once it's taller than the viewport.
+     The old `grid + place-items: center` clipped tall modals off the top
+     AND bottom with no way to scroll — on a phone that hid the footer, so
+     the Cancel/close button became unreachable. */
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 24px;
   animation: fadeIn .25s;
 }
@@ -1054,6 +1062,9 @@ button:disabled { cursor: not-allowed; }
 .onb {
   width: 560px;
   max-width: 100%;
+  /* Auto margins center the card vertically within the flex mask when there's
+     room, and collapse gracefully so it scrolls from the top when there isn't. */
+  margin: auto;
   background: var(--bg-elev);
   border: 1px solid var(--border-strong);
   border-radius: 18px;
@@ -1426,7 +1437,11 @@ button:disabled { cursor: not-allowed; }
 /* Layered on top of .onb / .onb-mask. Reuses the dimensions and animation
    from Onboarding so the two overlays feel like one design system; the
    .sub-* helpers add form-control styles that Onboarding didn't need. */
-.sub-modal { gap: 18px; max-height: calc(100vh - 48px); overflow-y: auto; }
+/* dvh (dynamic viewport height) tracks the *visible* area as the mobile
+   browser's address bar shows/hides — plain vh measures the larger layout
+   viewport, which pushed the footer behind the chrome on phones. vh stays
+   as a fallback for browsers without dvh. */
+.sub-modal { gap: 18px; max-height: calc(100vh - 48px); max-height: calc(100dvh - 48px); overflow-y: auto; }
 .sub-row { display: flex; flex-direction: column; gap: 8px; }
 .sub-label {
   font-family: var(--mono);
@@ -1536,5 +1551,63 @@ button:disabled { cursor: not-allowed; }
   background: var(--accent);
   border: 2px solid var(--bg-elev);
   cursor: pointer;
+}
+
+/* ============================================================
+   Mobile pass
+   Everything above is desktop-first; these blocks tighten the
+   layout so it stops feeling squeezed on phones. The modal
+   close/scroll fix lives up in .onb-mask / .onb (it benefits
+   every viewport, so it isn't gated behind a breakpoint).
+   ============================================================ */
+
+/* ---- Phones & small tablets ---- */
+@media (max-width: 720px) {
+  /* Nav: the header was cramming brand + pill rail + Repos + Subscribe +
+     two icon buttons onto one line. Drop the CTA/Repos label text down to
+     icons and tighten gaps so the scrollable pill rail keeps real room. */
+  .nav__inner { gap: 10px; }
+  .nav__actions { gap: 2px; }
+  .nav__cta { padding: 7px 9px; gap: 0; }
+  .nav__cta-label { display: none; }
+  .nav__link { padding: 6px 9px; }
+
+  /* Briefing header: 28px greeting + a stats block side-by-side is too wide.
+     Let it stack and trim the type so it doesn't dominate the first screen. */
+  .briefing { padding: 24px 0 16px; gap: 14px; }
+  .briefing__greet { font-size: 22px; }
+  .briefing__stats { gap: 18px; }
+
+  /* Cards breathe a little less so more fits per screen. */
+  .cluster { padding: 14px 14px; border-radius: 12px; }
+  .cluster__title { font-size: 18px; }
+
+  /* Modal: pull padding/type in so the form isn't wall-to-wall text, and
+     pin the height to the *visible* viewport (dvh) so the footer buttons
+     stay on-screen above the browser chrome. */
+  .onb { padding: 26px 22px; gap: 18px; border-radius: 16px; }
+  .onb__title { font-size: 22px; }
+  .onb__sub { font-size: 14px; }
+  .sub-modal { gap: 16px; }
+  .btn-primary { padding: 11px 14px; }
+}
+
+/* ---- Narrow phones ---- */
+@media (max-width: 480px) {
+  /* Reclaim ~80px of nav width by collapsing the wordmark to just the "SB"
+     monogram — the pill rail and actions need it more than the full name. */
+  .brand__name { display: none; }
+
+  .briefing__greet { font-size: 20px; }
+  .briefing__stats b { font-size: 16px; }
+
+  .onb-mask { padding: 12px; }
+  .onb { padding: 22px 18px; }
+
+  /* Footer was justify-between with a primary button that could overflow
+     the card edge on a 320–360px screen. Let the actions wrap and push the
+     primary button full-width so it's always tappable. */
+  .onb__footer { flex-wrap: wrap; gap: 12px; }
+  .onb__footer .btn-primary { flex: 1; justify-content: center; }
 }
 

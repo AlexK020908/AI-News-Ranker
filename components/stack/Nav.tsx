@@ -120,7 +120,7 @@ export function Nav({
                 <path d="M2 3h10v8H2z" stroke="currentColor" strokeWidth="1.4" />
                 <path d="M2 3l5 4 5-4" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
               </svg>
-              Subscribe
+              <span className="nav__cta-label">Subscribe</span>
             </button>
           )}
           <button className="icon-btn" title="Edit interests" onClick={onShowOnb} aria-label="Interests">

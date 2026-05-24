@@ -9,6 +9,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { importanceTier } from "@/components/item-card";
 import { CATEGORY_LABELS, type Category, type SourceKind } from "@/lib/types";
 import { cn, truncate } from "@/lib/utils";
+import { SITE_NAME } from "@/lib/site";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -75,8 +76,8 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { id } = await params;
   const item = await loadItem(id);
-  if (!item) return { title: "Not found — AI News Feed" };
-  const title = `${item.title} — AI News Feed`;
+  if (!item) return { title: `Not found — ${SITE_NAME}` };
+  const title = `${item.title} — ${SITE_NAME}`;
   const description = item.summary ? truncate(item.summary, 180) : undefined;
   return {
     title,
