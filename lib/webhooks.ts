@@ -96,10 +96,10 @@ export function buildItemEmbed(item: NotifyItem, manageUrl?: string): DiscordPay
     color: importanceColor(importance),
     fields,
     footer: manageUrl
-      ? { text: `stackBrief · unsubscribe: ${manageUrl}` }
-      : { text: "stackBrief" },
+      ? { text: `StackBrief · unsubscribe: ${manageUrl}` }
+      : { text: "StackBrief" },
     timestamp: item.published_at ?? undefined,
   };
 
-  return { embeds: [embed], username: "stackBrief" };
+  return { embeds: [embed], username: "StackBrief" };
 }

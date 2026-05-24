@@ -403,7 +403,7 @@ async function pushDigestToDiscord(url: string, markdown: string): Promise<boole
   let anyFailed = false;
   for (let i = 0; i < chunks.length; i++) {
     if (i > 0) await sleep(DISCORD_INTERCHUNK_MS);
-    const res = await postToDiscord(url, { content: chunks[i], username: "stackBrief" });
+    const res = await postToDiscord(url, { content: chunks[i], username: "StackBrief" });
     if (!res.ok) anyFailed = true;
   }
   return !anyFailed;

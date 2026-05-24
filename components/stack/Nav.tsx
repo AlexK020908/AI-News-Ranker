@@ -46,13 +46,13 @@ export function Nav({
       <div className="nav__inner">
         {isHome ? (
           <div className="brand" onClick={onLogo}>
-            <span className="brand__mark">sB</span>
-            <span className="brand__name">stackBrief<span className="brand__dot">.</span></span>
+            <span className="brand__mark">SB</span>
+            <span className="brand__name">StackBrief<span className="brand__dot">.</span></span>
           </div>
         ) : (
           <Link href="/" className="brand">
-            <span className="brand__mark">sB</span>
-            <span className="brand__name">stackBrief<span className="brand__dot">.</span></span>
+            <span className="brand__mark">SB</span>
+            <span className="brand__name">StackBrief<span className="brand__dot">.</span></span>
           </Link>
         )}
 

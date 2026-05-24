@@ -38,8 +38,8 @@ export async function POST(req: NextRequest) {
 
   const ping = await postToDiscord(parsed.url, {
     content:
-      "Subscribed to stackBrief. You'll start receiving items here once they cross your importance threshold.",
-    username: "stackBrief",
+      "Subscribed to StackBrief. You'll start receiving items here once they cross your importance threshold.",
+    username: "StackBrief",
   });
   if (!ping.ok) {
     return Response.json(

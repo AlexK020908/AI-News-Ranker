@@ -2,7 +2,7 @@ import type { Category } from "@/lib/types";
 
 // Resend REST API. No SDK dep — the call surface is one POST.
 const RESEND_URL = "https://api.resend.com/emails";
-const DEFAULT_FROM = "stackBrief <noreply@stackbrief.tech>";
+const DEFAULT_FROM = "StackBrief <noreply@stackbrief.tech>";
 
 export interface SendEmailInput {
   to: string;
@@ -88,7 +88,7 @@ function shell(title: string, bodyHtml: string, footerHtml: string): string {
   <tr><td align="center">
     <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;background:#101013;border:1px solid rgba(255,255,255,0.14);border-radius:14px;overflow:hidden;">
       <tr><td style="padding:28px 32px 8px 32px;">
-        <div style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:#f5a73c;">stackBrief</div>
+        <div style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:#f5a73c;">StackBrief</div>
       </td></tr>
       <tr><td style="padding:8px 32px 24px 32px;">
         ${bodyHtml}
@@ -156,16 +156,16 @@ function inlineFmt(s: string): string {
 // ---------------------------------------------------------------------------
 
 export function buildConfirmationEmail(confirmUrl: string): { subject: string; html: string; text: string } {
-  const subject = "Confirm your stackBrief subscription";
+  const subject = "Confirm your StackBrief subscription";
   const html = shell(
     subject,
     `<h1 style="margin:0 0 14px 0;font-size:24px;letter-spacing:-0.01em;color:#ececef;">One click to confirm.</h1>
-     <p style="margin:0 0 22px 0;color:rgba(236,236,239,0.72);font-size:15px;">You're almost subscribed to stackBrief — the only newsletter to keep up with AI. Hit the button below to confirm and we'll start sending.</p>
+     <p style="margin:0 0 22px 0;color:rgba(236,236,239,0.72);font-size:15px;">You're almost subscribed to StackBrief — the only newsletter to keep up with AI. Hit the button below to confirm and we'll start sending.</p>
      <p style="margin:0 0 24px 0;"><a href="${escapeHtml(confirmUrl)}" style="display:inline-block;background:#f5a73c;color:#0a0a0c;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;font-weight:600;padding:12px 22px;border-radius:10px;text-decoration:none;letter-spacing:0.02em;">Confirm subscription</a></p>
      <p style="margin:0;font-size:12px;color:rgba(236,236,239,0.5);">If the button doesn't work, paste this into your browser:<br><span style="color:rgba(236,236,239,0.72);word-break:break-all;">${escapeHtml(confirmUrl)}</span></p>`,
     `Didn't sign up? Just ignore this email — we won't send anything else.`,
   );
-  const text = `Confirm your stackBrief subscription:\n\n${confirmUrl}\n\nDidn't sign up? Ignore this email and you'll hear nothing more.`;
+  const text = `Confirm your StackBrief subscription:\n\n${confirmUrl}\n\nDidn't sign up? Ignore this email and you'll hear nothing more.`;
   return { subject, html, text };
 }
 
@@ -194,7 +194,7 @@ export function buildItemAlertEmail(
   const subject =
     items.length === 1
       ? `[${lead.importance ?? 0}] ${lead.title}`.slice(0, 120)
-      : `${items.length} new on stackBrief — ${lead.title}`.slice(0, 120);
+      : `${items.length} new on StackBrief — ${lead.title}`.slice(0, 120);
 
   const itemsHtml = items
     .map(
@@ -240,7 +240,7 @@ export function buildDigestEmail(
   periodLabel: string,
   unsubscribeUrl: string,
 ): { subject: string; html: string; text: string } {
-  const subject = `stackBrief — ${periodLabel}`;
+  const subject = `StackBrief — ${periodLabel}`;
   const html = shell(
     subject,
     renderDigestHtml(markdown),

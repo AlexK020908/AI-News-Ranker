@@ -24,7 +24,7 @@ export function Onboarding({ onDone, initial }: Props) {
     <div className="onb-mask" onClick={() => onDone()}>
       <div className="onb" onClick={(e) => e.stopPropagation()}>
         <div>
-          <div className="onb__eyebrow">Welcome to stackBrief</div>
+          <div className="onb__eyebrow">Welcome to StackBrief</div>
           <h2 className="onb__title">
             The only newsletter<br />to keep up with AI.
           </h2>

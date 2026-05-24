@@ -10,7 +10,7 @@ const jetbrains = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "stackBrief — the only newsletter to keep up with AI",
+  title: "StackBrief — the only newsletter to keep up with AI",
   description:
     "Daily AI briefing across papers, models, repos, and news. Clustered across sources so you read each story once.",
 };

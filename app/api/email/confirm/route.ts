@@ -54,7 +54,7 @@ export async function GET(req: NextRequest) {
 }
 
 function renderHtml(message: string, status: number): Response {
-  const body = `<!doctype html><html><head><meta charset="utf-8"><title>stackBrief</title>
+  const body = `<!doctype html><html><head><meta charset="utf-8"><title>StackBrief</title>
 <style>
 body{background:#0a0a0c;color:#ececef;font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',sans-serif;display:grid;place-items:center;min-height:100vh;margin:0;padding:24px;}
 main{max-width:32rem;text-align:center;background:#101013;border:1px solid rgba(255,255,255,0.14);border-radius:14px;padding:36px;}
@@ -64,7 +64,7 @@ p{color:rgba(236,236,239,0.72);line-height:1.55;margin:0 0 18px 0;}
 a{color:#f5a73c;}
 </style>
 </head><body><main>
-<div class="eyebrow">stackBrief</div>
+<div class="eyebrow">StackBrief</div>
 <h1>Subscription</h1>
 <p>${message}</p>
 <p><a href="/">← back to the feed</a></p>
