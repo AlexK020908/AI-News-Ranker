@@ -677,13 +677,19 @@ button:disabled { cursor: not-allowed; }
 .cluster__caveman__body { color: var(--text-2); }
 .cluster[data-variant="row"] .cluster__caveman {
   font-size: 11.5px;
-  padding: 6px 8px;
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
+  padding: 7px 9px 8px;
+  gap: 5px;
   overflow: hidden;
+  min-height: 0;
 }
 .cluster[data-variant="row"] .cluster__caveman__label { font-size: 9px; }
+.cluster[data-variant="row"] .cluster__caveman__body {
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  min-width: 0;
+}
 
 /* ============ Rotating thumbnail ============ */
 .thumb {
@@ -728,14 +734,19 @@ button:disabled { cursor: not-allowed; }
 .thumb__layer--image::after {
   content: "";
   position: absolute;
-  inset: auto 0 0 0;
-  height: 70%;
-  background: linear-gradient(to top, rgba(0,0,0,0.78) 0%, rgba(0,0,0,0.35) 50%, transparent 100%);
+  inset: 0;
+  background:
+    linear-gradient(to top, rgba(0,0,0,0.88) 0%, rgba(0,0,0,0.55) 45%, rgba(0,0,0,0.15) 80%, rgba(0,0,0,0.05) 100%),
+    linear-gradient(to bottom, rgba(0,0,0,0.35) 0%, transparent 30%);
   pointer-events: none;
   z-index: 0;
 }
 .thumb__layer .thumb__source,
-.thumb__layer .thumb__label { position: relative; z-index: 1; }
+.thumb__layer .thumb__label {
+  position: relative;
+  z-index: 1;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.65), 0 0 8px rgba(0,0,0,0.45);
+}
 .thumb__source {
   font-family: var(--mono);
   font-size: 10px;

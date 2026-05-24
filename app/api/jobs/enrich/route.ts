@@ -80,6 +80,19 @@ export async function GET(req: NextRequest) {
     return await runThumbnailBackfill(limit);
   }
 
+  // Caveman backfill — re-run enrichItem on already-enriched paper rows
+  // that have no caveman_summary. Only the caveman column is overwritten;
+  // summary/category/tags/importance are left intact so the row's existing
+  // signal is preserved. Triggered when the caveman field was added after
+  // a row was already enriched, or when Claude returned an empty caveman
+  // on first pass.
+  if (searchParams.get("backfill_caveman") === "1") {
+    if (!process.env.ANTHROPIC_API_KEY) {
+      return Response.json({ error: "ANTHROPIC_API_KEY not set" }, { status: 500 });
+    }
+    return await runCavemanBackfill(limit);
+  }
+
   if (!process.env.ANTHROPIC_API_KEY) {
     return Response.json({ error: "ANTHROPIC_API_KEY not set" }, { status: 500 });
   }
@@ -270,6 +283,79 @@ async function runThumbnailBackfill(limit: number): Promise<Response> {
       updated,
       skipped,
       blocked: blockedAfter.length > 0 ? blockedAfter : undefined,
+    });
+  } catch (e) {
+    return Response.json({ ok: false, error: (e as Error).message }, { status: 500 });
+  }
+}
+
+async function runCavemanBackfill(limit: number): Promise<Response> {
+  try {
+    const supabase = createSupabaseServiceClient();
+    // Target: enriched paper rows with no caveman, that we haven't already
+    // tried to backfill. raw.caveman_backfilled_at acts as a dead-letter
+    // marker — without it, Claude refusals (or truly un-caveman-able papers)
+    // would cycle through every batch forever.
+    const { data, error } = await supabase
+      .from("items")
+      .select(
+        "id, source_id, title, url, author, content, published_at, region, raw, external_id, s3_storage_id, source:sources!inner(slug, name, kind, reputation_weight)",
+      )
+      .eq("category", "paper")
+      .is("caveman_summary", null)
+      .not("enriched_at", "is", null)
+      .is("duplicate_of", null)
+      .filter("raw->>caveman_backfilled_at", "is", null)
+      .order("ingested_at", { ascending: false })
+      .limit(limit);
+
+    if (error) throw new Error(error.message);
+    const rows = (data ?? []) as unknown as UnenrichedRow[];
+
+    let updated = 0;
+    let empty = 0;
+    let failed = 0;
+
+    await runPool(rows, CONCURRENCY, async (r) => {
+      const nowIso = new Date().toISOString();
+      try {
+        const result = await enrichItem({
+          sourceName: r.source.name,
+          sourceKind: r.source.kind,
+          title: r.title,
+          url: r.url,
+          author: r.author,
+          content: r.content,
+          publishedAt: r.published_at,
+        });
+
+        const patch: Record<string, unknown> = {
+          raw: { ...(r.raw ?? {}), caveman_backfilled_at: nowIso },
+        };
+        if (result.category === "paper" && result.caveman_summary) {
+          patch.caveman_summary = result.caveman_summary;
+          updated++;
+        } else {
+          // Either Claude declined to caveman-ify it, or the row no longer
+          // classifies as a paper on re-enrich. Mark it so we don't retry.
+          empty++;
+        }
+
+        const { error: uErr } = await supabase.from("items").update(patch).eq("id", r.id);
+        if (uErr) throw new Error(uErr.message);
+      } catch (e) {
+        failed++;
+        console.warn(`[enrich/caveman] ${r.id} failed: ${(e as Error).message.slice(0, 200)}`);
+      }
+    });
+
+    return Response.json({
+      ok: true,
+      mode: "backfill_caveman",
+      batch: rows.length,
+      updated,
+      empty,
+      failed,
     });
   } catch (e) {
     return Response.json({ ok: false, error: (e as Error).message }, { status: 500 });

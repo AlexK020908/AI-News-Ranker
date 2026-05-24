@@ -33,6 +33,12 @@ const ENDPOINTS = [
   // is harmless — it no-ops until the next period rolls.
   { name: "ingest",         path: "/api/jobs/ingest",         timeoutMs: 240_000 },
   { name: "enrich",         path: "/api/jobs/enrich",         timeoutMs: 240_000 },
+  // Caveman backfill — refills caveman_summary on paper rows that were
+  // enriched before the column existed (or where Claude returned empty on
+  // first pass). Small batch so we trickle through without spiking Claude
+  // spend; the route's raw.caveman_backfilled_at marker means once everything
+  // is processed the call returns batch:0 instantly and costs nothing.
+  { name: "enrich-caveman", path: "/api/jobs/enrich?backfill_caveman=1&limit=50", timeoutMs: 240_000 },
   { name: "cluster-topics", path: "/api/jobs/cluster-topics", timeoutMs: 240_000 },
   { name: "notify",         path: "/api/jobs/notify",         timeoutMs: 60_000  },
   { name: "digest",         path: "/api/jobs/digest",         timeoutMs: 120_000 },
