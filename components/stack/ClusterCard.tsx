@@ -41,6 +41,7 @@ export function ClusterCard({ cluster, variant, onOpen, index }: Props) {
     <article
       className="cluster"
       data-variant={variant || undefined}
+      data-topic={cluster.topic}
       ref={cardRef}
       style={{ animationDelay: `${Math.min(index || 0, 6) * 60}ms` }}
     >

@@ -487,12 +487,19 @@ button:disabled { cursor: not-allowed; }
    row layout breaks down otherwise (cards jump to inconsistent heights
    as the user scrolls horizontally). */
 .cluster[data-variant="row"] {
-  width: 320px;
-  height: 470px;
+  width: 300px;
+  height: 380px;
   padding: 14px;
   gap: 10px;
   grid-template-rows: auto auto 1fr auto;
   flex-shrink: 0;
+}
+/* Paper cards carry a caveman explanation block in addition to the thumb,
+   so they need extra vertical room. All other topic rows stay at the
+   original compact size — caveman is paper-only. */
+.cluster[data-variant="row"][data-topic="paper"] {
+  width: 320px;
+  height: 470px;
 }
 .cluster[data-variant="row"] .cluster__body {
   grid-template-columns: 1fr;
@@ -514,6 +521,10 @@ button:disabled { cursor: not-allowed; }
   font-size: 15px;
   line-height: 1.25;
   font-weight: 600;
+  /* Always reserve exactly two lines of height so the thumbnail below
+     starts at the same Y on every card in a row — otherwise short titles
+     pull the thumb up and the row reads visually broken. */
+  min-height: calc(15px * 1.25 * 2);
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -594,13 +605,18 @@ button:disabled { cursor: not-allowed; }
 }
 .topic-row__scroller > .cluster { scroll-snap-align: start; }
 
-/* Grid view (single-topic) — same fixed card size, multiple per row. */
+/* Grid view (single-topic) — same fixed card size, multiple per row.
+   Track width matches the card width set in .cluster[data-variant="row"]:
+   default 300, with a paper override at 320 (caveman block needs more room). */
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, 320px);
+  grid-template-columns: repeat(auto-fill, 300px);
   gap: 14px;
   justify-content: start;
   align-items: start;
+}
+.grid[data-topic="paper"] {
+  grid-template-columns: repeat(auto-fill, 320px);
 }
 
 .cluster__head {

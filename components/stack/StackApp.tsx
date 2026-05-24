@@ -229,8 +229,10 @@ export function StackApp({
               </div>
             ) : (
               // Single-topic view: keep the grid so the user gets the full
-              // catalog of that category at once.
-              <div className="grid">
+              // catalog of that category at once. data-topic lets the CSS
+              // pick the right column width — paper cards are 320 (need
+              // room for caveman), all other topics stay at 300.
+              <div className="grid" data-topic={topic}>
                 {filtered.map((c, i) => (
                   <ClusterCard
                     key={c.id}
