@@ -7,13 +7,18 @@
 //
 // Env:
 //   WORKER_TARGET        Base URL for the app (default http://app:3000)
-//   WORKER_INTERVAL_SEC  Loop interval in seconds (default 900 = 15 min)
+//   WORKER_INTERVAL_SEC  Loop interval in seconds (default 180 = 3 min)
+//                        The ingest route honors sources.poll_interval_sec
+//                        per-source, so the worker can tick aggressively
+//                        without re-polling slow sources. Sources with
+//                        poll_interval_sec=300 will poll every ~5 min;
+//                        sources at 3600 still poll hourly.
 //   CRON_SECRET          Required — Bearer token for /api/jobs/*
 //                        (env var name kept for backward-compat with
 //                        existing deploys/schedulers)
 
 const TARGET = process.env.WORKER_TARGET || "http://app:3000";
-const INTERVAL_SEC = Math.max(60, Number(process.env.WORKER_INTERVAL_SEC || "900"));
+const INTERVAL_SEC = Math.max(60, Number(process.env.WORKER_INTERVAL_SEC || "180"));
 const SECRET = process.env.CRON_SECRET;
 
 if (!SECRET) {

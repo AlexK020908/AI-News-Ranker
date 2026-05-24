@@ -10,22 +10,31 @@
 -- Safe to re-run — every INSERT has ON CONFLICT DO UPDATE, every disable
 -- and weight update is idempotent.
 
+-- Priority tiers (poll_interval_sec):
+--   300   = tier-1 frontier-lab announcements (where minutes of latency matter)
+--   900   = tier-2 fast news cycle (15 min, default for first-party blogs)
+--   1800  = tier-3 standard news (30 min, secondary outlets)
+--   3600  = tier-4 slower sources (1 hr, papers, technical blogs)
+--   7200+ = tier-5 long-tail / weekly newsletters
+-- The worker ticks every ~3 min but the ingest route honors poll_interval_sec
+-- per source — see lib/ingest/run.ts:isDue.
 insert into sources (slug, name, kind, region, config, poll_interval_sec) values
 
 -- ============== Labs & Official Blogs (RSS) ==============
+-- Top labs ship rarely but the news matters within minutes — tier-1 (300s).
 ('openai-blog',           'OpenAI Blog',                  'rss', 'global',
-  '{"url":"https://openai.com/blog/rss.xml"}',                                                       900),
+  '{"url":"https://openai.com/blog/rss.xml"}',                                                       300),
 -- Anthropic has no first-party RSS; these are community-maintained mirrors.
 ('anthropic-news',        'Anthropic News',               'rss', 'global',
-  '{"url":"https://raw.githubusercontent.com/Olshansk/rss-feeds/main/feeds/feed_anthropic_news.xml"}', 900),
+  '{"url":"https://raw.githubusercontent.com/Olshansk/rss-feeds/main/feeds/feed_anthropic_news.xml"}', 300),
 ('claude-blog',           'Claude Blog',                  'rss', 'global',
-  '{"url":"https://raw.githubusercontent.com/Olshansk/rss-feeds/main/feeds/feed_claude.xml"}',        900),
+  '{"url":"https://raw.githubusercontent.com/Olshansk/rss-feeds/main/feeds/feed_claude.xml"}',        300),
 ('anthropic-engineering', 'Anthropic Engineering',        'rss', 'global',
   '{"url":"https://raw.githubusercontent.com/Olshansk/rss-feeds/main/feeds/feed_anthropic_engineering.xml"}', 1800),
 ('deepmind-blog',         'Google DeepMind',              'rss', 'global',
-  '{"url":"https://deepmind.google/blog/rss.xml"}',                                                  900),
+  '{"url":"https://deepmind.google/blog/rss.xml"}',                                                  300),
 ('google-ai-blog',        'Google AI',                    'rss', 'global',
-  '{"url":"https://blog.google/technology/ai/rss/"}',                                                900),
+  '{"url":"https://blog.google/technology/ai/rss/"}',                                                300),
 ('microsoft-research',    'Microsoft Research',           'rss', 'global',
   '{"url":"https://www.microsoft.com/en-us/research/feed/"}',                                        1800),
 ('nvidia-blog',           'NVIDIA Blog',                  'rss', 'global',
@@ -170,8 +179,10 @@ insert into sources (slug, name, kind, region, config, poll_interval_sec) values
   '{"sort":"trendingScore"}',                                                                        7200),
 
 -- ============== Community boards ==============
+-- HN is fast-moving — front-page lifetime is hours. Tier-1 (300s) so a story
+-- that lands at :03 doesn't sit unseen until :30.
 ('hackernews-ai',          'Hacker News — AI',            'hackernews', 'global',
-  '{"query":"artificial intelligence OR LLM OR GPT OR \"large language model\"","min_points":100}',  1800),
+  '{"query":"artificial intelligence OR LLM OR GPT OR \"large language model\"","min_points":100}',  300),
 
 -- ============== News & Funding ==============
 ('techcrunch-ai',          'TechCrunch AI',               'rss', 'global',

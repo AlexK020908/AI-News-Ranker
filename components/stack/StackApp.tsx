@@ -6,7 +6,7 @@ import type { RisingStandalone } from "@/lib/stack/rising-transform";
 import type { TrendingRepoCard } from "@/lib/stack/trending-repo-transform";
 import { CATEGORIES, CATEGORY_LABELS, isCategory, type Category } from "@/lib/types";
 import { isStackTopicId } from "@/lib/stack/topics";
-import { useScrollY } from "@/lib/stack/hooks";
+import { useClusterFreshness, useScrollY } from "@/lib/stack/hooks";
 import { Nav } from "./Nav";
 import { BriefingHeader } from "./BriefingHeader";
 import { ClusterCard } from "./ClusterCard";
@@ -64,6 +64,10 @@ export function StackApp({
     () => new Set<Category>(CATEGORIES),
   );
   const scrollY = useScrollY();
+  // 60s poll cadence pairs with WORKER_INTERVAL_SEC=180 — anything faster
+  // would mostly return empty diffs. The hook silently router.refresh()'s
+  // when scrolled to top; otherwise reports a count for the pill below.
+  const { pendingCount, acceptUpdates } = useClusterFreshness(60_000);
 
   // Hydrate persisted preferences once on mount. Doing this in a useEffect
   // rather than useState's lazy initializer avoids the SSR/CSR mismatch that
@@ -262,6 +266,19 @@ export function StackApp({
           <path d="M7 11V3M3 7l4-4 4 4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       </button>
+
+      {pendingCount > 0 && (
+        <button
+          className="new-updates-pill"
+          onClick={acceptUpdates}
+          aria-label={`${pendingCount} new updates — click to refresh`}
+        >
+          <svg width="12" height="12" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+            <path d="M7 11V3M3 7l4-4 4 4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          {pendingCount} new
+        </button>
+      )}
 
       {showOnb && <Onboarding onDone={onOnbDone} />}
     </>

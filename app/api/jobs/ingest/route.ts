@@ -16,11 +16,14 @@ export async function GET(req: NextRequest) {
   const onlyParam = searchParams.get("only");
   const onlySlugs = onlyParam ? onlyParam.split(",").map((s) => s.trim()).filter(Boolean) : undefined;
   const concurrency = Number(searchParams.get("concurrency") ?? 4);
+  // ?force=1 bypasses the per-source due-time gate. Worker ticks omit it so
+  // sources respect their own poll_interval_sec; manual curl can opt in.
+  const force = searchParams.get("force") === "1";
 
   try {
     const supabase = createSupabaseServiceClient();
     const { results, pruned, cutoff, pruned_snapshots, snapshot_cutoff } =
-      await runIngestionForAll(supabase, { onlySlugs, concurrency });
+      await runIngestionForAll(supabase, { onlySlugs, concurrency, force });
     const summary = {
       sources: results.length,
       attempted: results.reduce((n, r) => n + r.attempted, 0),

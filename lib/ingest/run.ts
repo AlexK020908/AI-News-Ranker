@@ -91,9 +91,21 @@ async function markPolled(supabase: SupabaseClient, id: string, error: string | 
     .eq("id", id);
 }
 
+// Returns true if a source is "due" — never polled, or last polled at least
+// poll_interval_sec ago. Lets the worker tick aggressively (e.g. every 3 min)
+// while sources still respect their individual cadences. Sources with broken
+// or unset intervals fall back to the schema default (900s).
+function isDue(source: Source, nowMs: number): boolean {
+  if (!source.last_polled_at) return true;
+  const lastMs = Date.parse(source.last_polled_at);
+  if (!Number.isFinite(lastMs)) return true;
+  const intervalMs = Math.max(60, source.poll_interval_sec || 900) * 1000;
+  return nowMs - lastMs >= intervalMs;
+}
+
 export async function runIngestionForAll(
   supabase: SupabaseClient,
-  opts: { concurrency?: number; onlySlugs?: string[] } = {},
+  opts: { concurrency?: number; onlySlugs?: string[]; force?: boolean } = {},
 ): Promise<IngestSummary> {
   // Sweep stale items first so they're gone before any new backfill lands.
   // Snapshot pruning is independent of item pruning — snapshots cascade-
@@ -127,8 +139,15 @@ export async function runIngestionForAll(
   if (error) throw new Error(`load sources: ${error.message}`);
 
   const all = (sources ?? []) as Source[];
+  // Filter to sources whose poll_interval_sec has elapsed since last poll.
+  // `force` (admin/manual triggers, or onlySlugs targeting) bypasses the gate
+  // so a one-off curl can always hit every source it asks for.
+  const now = Date.now();
+  const due = (opts.force || opts.onlySlugs?.length)
+    ? all
+    : all.filter((s) => isDue(s, now));
   const results: RunResult[] = [];
-  await runPool(all, opts.concurrency ?? 4, async (source) => {
+  await runPool(due, opts.concurrency ?? 4, async (source) => {
     const r = await runIngestionForSource(supabase, source);
     results.push(r);
   });
