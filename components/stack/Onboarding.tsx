@@ -24,15 +24,15 @@ export function Onboarding({ onDone, initial }: Props) {
     <div className="onb-mask" onClick={() => onDone()}>
       <div className="onb" onClick={(e) => e.stopPropagation()}>
         <div>
-          <div className="onb__eyebrow">Welcome to Stack</div>
+          <div className="onb__eyebrow">Welcome to stackBrief</div>
           <h2 className="onb__title">
-            Tech news,<br />bundled across every outlet.
+            The only newsletter<br />to keep up with AI.
           </h2>
         </div>
         <p className="onb__sub">
-          We cluster stories by topic so you read each one <i>once</i> — not five
-          times in five tabs. Pick what you care about and we&apos;ll tune your
-          morning brief.
+          We cluster papers, models, repos, and news across every source so you read each
+          story <i>once</i> — not five times in five tabs. Pick what you care about and
+          we&apos;ll tune your brief.
         </p>
         <div>
           <div className="onb__count" style={{ marginBottom: 10 }}>

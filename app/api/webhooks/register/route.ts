@@ -38,8 +38,8 @@ export async function POST(req: NextRequest) {
 
   const ping = await postToDiscord(parsed.url, {
     content:
-      "Subscribed to ai-news-feed. You'll start receiving items here once they cross your importance threshold.",
-    username: "ai-news-feed",
+      "Subscribed to stackBrief. You'll start receiving items here once they cross your importance threshold.",
+    username: "stackBrief",
   });
   if (!ping.ok) {
     return Response.json(
@@ -61,7 +61,9 @@ export async function POST(req: NextRequest) {
     .from("webhooks")
     .upsert(
       {
+        kind: "discord",
         url: parsed.url,
+        email: null,
         min_importance: parsed.min_importance,
         categories: parsed.categories,
         enabled: true,

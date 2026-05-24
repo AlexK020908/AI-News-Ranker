@@ -10,9 +10,9 @@ const jetbrains = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Stack — tech news, bundled",
+  title: "stackBrief — the only newsletter to keep up with AI",
   description:
-    "Clusters tech news by topic so you read each story once — not five times in five tabs.",
+    "Daily AI briefing across papers, models, repos, and news. Clustered across sources so you read each story once.",
 };
 
 export default function RootLayout({

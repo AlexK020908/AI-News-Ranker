@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { isAuthorizedJob } from "@/lib/job-auth";
 import { buildItemEmbed, postToDiscord, type NotifyItem } from "@/lib/webhooks";
+import { sendEmail, buildItemAlertEmail, type EmailItem } from "@/lib/email";
 import { runPool } from "@/lib/utils";
 import type { Category } from "@/lib/types";
 
@@ -13,14 +14,22 @@ export const dynamic = "force-dynamic";
 // backfills / reprocessed history.
 const LOOKBACK_HOURS = 12;
 const CONCURRENCY = 4;
+// Email subs receive a single bundled email per tick rather than N separate
+// messages. The bundle cap prevents a backfill burst from producing a
+// wall-of-text email; remaining items land on the next tick (still
+// deduplicated via webhook_deliveries).
+const EMAIL_BUNDLE_MAX = 8;
 
 interface WebhookRow {
   id: string;
-  url: string;
+  kind: "discord" | "email";
+  url: string | null;
+  email: string | null;
   min_importance: number;
   categories: Category[];
   manage_token: string;
   is_digest: boolean | null;
+  confirmed_at: string | null;
 }
 
 interface CandidateItem {
@@ -49,18 +58,20 @@ export async function GET(req: NextRequest) {
   }
 
   // Exclude digest subscribers: a webhook that opted into the daily
-  // digest does NOT want a stream of per-item alerts on top. The
-  // is_digest column defaults to false so legacy webhooks are
-  // unaffected. (Migration 005 adds the column; we use coalesce here
-  // so this route still works against an un-migrated DB during deploys.)
+  // digest does NOT want a stream of per-item alerts on top.
   const { data: webhooks, error: wErr } = await supabase
     .from("webhooks")
-    .select("id, url, min_importance, categories, manage_token, is_digest")
+    .select("id, kind, url, email, min_importance, categories, manage_token, is_digest, confirmed_at")
     .eq("enabled", true)
     .or("is_digest.is.null,is_digest.eq.false");
 
   if (wErr) return Response.json({ error: wErr.message }, { status: 500 });
-  const subs = (webhooks ?? []) as WebhookRow[];
+  // Email subs must be confirmed (double-opt-in); Discord subs were
+  // implicitly verified by a successful ping at registration time so they
+  // don't carry a confirmed_at.
+  const subs = (webhooks ?? []).filter((s) =>
+    s.kind === "discord" || (s.kind === "email" && s.confirmed_at),
+  ) as WebhookRow[];
   if (subs.length === 0) return Response.json({ ok: true, webhooks: 0, delivered: 0 });
 
   const minThreshold = Math.min(...subs.map((s) => s.min_importance));
@@ -112,14 +123,59 @@ export async function GET(req: NextRequest) {
       continue;
     }
     const sentIds = new Set((already ?? []).map((r) => r.item_id as string));
-    const toSend = eligible.filter((e) => !sentIds.has(e.id)).slice(0, 10);
+    // Discord splits into multiple messages (chat scroll = unit of
+    // consumption). Email bundles into ONE message (inbox = unit of
+    // consumption, separate emails are spam-grade UX). Both paths still
+    // record per-item delivery rows for dedupe.
+    const perSubCap = sub.kind === "email" ? EMAIL_BUNDLE_MAX : 10;
+    const toSend = eligible.filter((e) => !sentIds.has(e.id)).slice(0, perSubCap);
     if (toSend.length === 0) continue;
 
     const unsubscribeUrl = `${origin}/api/webhooks/unsubscribe?id=${sub.id}&token=${sub.manage_token}`;
 
-    await runPool(toSend, CONCURRENCY, async (it) => {
-      const notifyItem: NotifyItem = {
-        id: it.id,
+    if (sub.kind === "discord" && sub.url) {
+      const discordUrl = sub.url;
+      await runPool(toSend, CONCURRENCY, async (it) => {
+        const notifyItem: NotifyItem = {
+          id: it.id,
+          title: it.title,
+          url: it.url,
+          summary: it.summary,
+          importance: it.importance,
+          category: it.category,
+          duplicate_count: it.duplicate_count,
+          source_name: it.source.name,
+          published_at: it.published_at,
+        };
+        const payload = buildItemEmbed(notifyItem, unsubscribeUrl);
+        const res = await postToDiscord(discordUrl, payload);
+        const status = res.ok ? "ok" : `err:${res.status}`;
+
+        await supabase.from("webhook_deliveries").insert({
+          webhook_id: sub.id,
+          item_id: it.id,
+          status,
+        });
+
+        if (res.ok) {
+          delivered++;
+          await supabase
+            .from("webhooks")
+            .update({
+              last_delivered_at: new Date().toISOString(),
+              delivery_count: await incrementCount(supabase, sub.id),
+            })
+            .eq("id", sub.id);
+        } else {
+          failed++;
+          // Discord returns 404/410 for deleted webhooks — auto-disable so we stop retrying.
+          if (res.status === 404 || res.status === 410) {
+            await supabase.from("webhooks").update({ enabled: false }).eq("id", sub.id);
+          }
+        }
+      });
+    } else if (sub.kind === "email" && sub.email) {
+      const emailItems: EmailItem[] = toSend.map((it) => ({
         title: it.title,
         url: it.url,
         summary: it.summary,
@@ -128,34 +184,38 @@ export async function GET(req: NextRequest) {
         duplicate_count: it.duplicate_count,
         source_name: it.source.name,
         published_at: it.published_at,
-      };
-      const payload = buildItemEmbed(notifyItem, unsubscribeUrl);
-      const res = await postToDiscord(sub.url, payload);
+      }));
+      const tmpl = buildItemAlertEmail(emailItems, unsubscribeUrl);
+      const res = await sendEmail({
+        to: sub.email,
+        subject: tmpl.subject,
+        html: tmpl.html,
+        text: tmpl.text,
+      });
       const status = res.ok ? "ok" : `err:${res.status}`;
 
-      await supabase.from("webhook_deliveries").insert({
+      // One delivery row per item even though we sent a single bundled
+      // email — keeps the dedupe contract identical across channels.
+      const rows = toSend.map((it) => ({
         webhook_id: sub.id,
         item_id: it.id,
         status,
-      });
+      }));
+      await supabase.from("webhook_deliveries").insert(rows);
 
       if (res.ok) {
-        delivered++;
+        delivered += toSend.length;
         await supabase
           .from("webhooks")
           .update({
             last_delivered_at: new Date().toISOString(),
-            delivery_count: await incrementCount(supabase, sub.id),
+            delivery_count: await incrementCount(supabase, sub.id, toSend.length),
           })
           .eq("id", sub.id);
       } else {
-        failed++;
-        // Discord returns 404/410 for deleted webhooks — auto-disable so we stop retrying.
-        if (res.status === 404 || res.status === 410) {
-          await supabase.from("webhooks").update({ enabled: false }).eq("id", sub.id);
-        }
+        failed += toSend.length;
       }
-    });
+    }
   }
 
   return Response.json({
@@ -172,11 +232,12 @@ export const POST = GET;
 async function incrementCount(
   supabase: ReturnType<typeof createSupabaseServiceClient>,
   id: string,
+  by: number = 1,
 ): Promise<number> {
   const { data } = await supabase
     .from("webhooks")
     .select("delivery_count")
     .eq("id", id)
     .maybeSingle();
-  return (data?.delivery_count ?? 0) + 1;
+  return (data?.delivery_count ?? 0) + by;
 }

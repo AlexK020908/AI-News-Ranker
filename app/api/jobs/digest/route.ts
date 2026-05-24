@@ -12,6 +12,7 @@ import {
   type DigestSections,
 } from "@/lib/anthropic/digest-prompt";
 import { postToDiscord } from "@/lib/webhooks";
+import { sendEmail, buildDigestEmail } from "@/lib/email";
 import { extractJsonBlock, runPool } from "@/lib/utils";
 import type { Category } from "@/lib/types";
 
@@ -57,7 +58,11 @@ interface SourceRow {
 
 interface DigestWebhookRow {
   id: string;
-  url: string;
+  kind: "discord" | "email";
+  url: string | null;
+  email: string | null;
+  manage_token: string;
+  confirmed_at: string | null;
 }
 
 export async function GET(req: NextRequest) {
@@ -263,11 +268,12 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  // Push to digest-subscribed Discord webhooks. Item-level webhook
-  // subscribers are NOT touched — they get the existing notify route.
+  // Push to digest-subscribed channels (Discord + confirmed email).
+  // Item-level webhook subscribers are NOT touched — they get the
+  // existing notify route.
   const { data: subsRaw, error: wErr } = await supabase
     .from("webhooks")
-    .select("id, url")
+    .select("id, kind, url, email, manage_token, confirmed_at")
     .eq("enabled", true)
     .eq("is_digest", true);
   if (wErr) {
@@ -284,15 +290,37 @@ export async function GET(req: NextRequest) {
       { status: 500 },
     );
   }
-  const subs = (subsRaw ?? []) as DigestWebhookRow[];
+  // Drop unconfirmed email subs — they don't receive anything until
+  // they click the confirmation link.
+  const subs = ((subsRaw ?? []) as DigestWebhookRow[]).filter((s) =>
+    s.kind === "discord" || (s.kind === "email" && s.confirmed_at),
+  );
+
+  const origin =
+    process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ??
+    `${req.nextUrl.protocol}//${req.nextUrl.host}`;
+  const periodLabel = formatPeriodLabel(period.end);
 
   let pushed = 0;
   let pushFailed = 0;
   if (subs.length > 0) {
     await runPool(subs, 4, async (sub) => {
-      const ok = await pushDigestToDiscord(sub.url, markdown);
-      if (ok) pushed++;
-      else pushFailed++;
+      const unsubscribeUrl = `${origin}/api/webhooks/unsubscribe?id=${sub.id}&token=${sub.manage_token}`;
+      if (sub.kind === "discord" && sub.url) {
+        const ok = await pushDigestToDiscord(sub.url, markdown);
+        if (ok) pushed++;
+        else pushFailed++;
+      } else if (sub.kind === "email" && sub.email) {
+        const tmpl = buildDigestEmail(markdown, periodLabel, unsubscribeUrl);
+        const res = await sendEmail({
+          to: sub.email,
+          subject: tmpl.subject,
+          html: tmpl.html,
+          text: tmpl.text,
+        });
+        if (res.ok) pushed++;
+        else pushFailed++;
+      }
     });
   }
 
@@ -306,6 +334,14 @@ export async function GET(req: NextRequest) {
     pushed,
     push_failed: pushFailed,
   });
+}
+
+function formatPeriodLabel(endIso: string): string {
+  try {
+    return new Date(endIso).toISOString().slice(0, 10);
+  } catch {
+    return endIso;
+  }
 }
 
 export const POST = GET;
@@ -367,7 +403,7 @@ async function pushDigestToDiscord(url: string, markdown: string): Promise<boole
   let anyFailed = false;
   for (let i = 0; i < chunks.length; i++) {
     if (i > 0) await sleep(DISCORD_INTERCHUNK_MS);
-    const res = await postToDiscord(url, { content: chunks[i], username: "ai-news-feed" });
+    const res = await postToDiscord(url, { content: chunks[i], username: "stackBrief" });
     if (!res.ok) anyFailed = true;
   }
   return !anyFailed;
