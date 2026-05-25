@@ -2,6 +2,7 @@ import { truncate } from "@/lib/utils";
 import type { Adapter, IngestContext } from "./types";
 import { USER_AGENT } from "./types";
 import { readStringConfig, readNumberConfig } from "./http";
+import { twitterEngagement } from "./engagement";
 
 // X / Twitter ingest via twitterapi.io — a third-party read API that proxies
 // X's data without the official API's cost/quota. We deliberately do NOT use a
@@ -65,16 +66,8 @@ function readBoolConfig(ctx: IngestContext, key: string, fallback: boolean): boo
   return typeof v === "boolean" ? v : fallback;
 }
 
-// X engagement is dominated by likes; retweets are a stronger signal of reach,
-// replies a weaker one. A coarse weighted sum is enough for ranking + the
-// rising surface — it never needs to be exact.
-function tweetEngagement(t: Tweet): number {
-  const likes = Number(t.likeCount) || 0;
-  const rts = Number(t.retweetCount) || 0;
-  const replies = Number(t.replyCount) || 0;
-  const quotes = Number(t.quoteCount) || 0;
-  return likes + rts * 2 + replies + quotes;
-}
+// Engagement is normalized to 0-100 by twitterEngagement() — items.engagement_score
+// is CHECK (0..100), so the raw like/RT counts MUST be scaled or the INSERT throws.
 
 // Twitter timestamps come as "Tue Dec 10 07:00:00 +0000 2024". Date can parse
 // that, but guard against the occasional null/garbage rather than emitting an
@@ -135,11 +128,16 @@ export const twitterAdapter: Adapter = async (ctx) => {
       return { items: [], error: `twitter: ${res.status} ${body.slice(0, 160)}` };
     }
     const json = (await res.json()) as LastTweetsResponse;
-    // Success envelope is {status:"success", code:0, data:{tweets}}. Failures
-    // come back (sometimes with HTTP 200) as {error, code:-1} or
-    // {status:"error", message}, so check all three rather than just status.
-    if (json.error || json.code === -1 || json.status === "error") {
-      return { items: [], error: `twitter: ${json.message ?? json.error ?? json.msg ?? "api error"}` };
+    // Success envelope is {status:"success", code:0, data:{tweets}}. Treat ANY
+    // non-zero code (not just -1), an `error` string, or status:"error" as a
+    // failure — otherwise a {code:2,msg:"rate limited"} HTTP-200 body would be
+    // swallowed as a clean empty result and the source would silently stop.
+    if (
+      json.error
+      || json.status === "error"
+      || (typeof json.code === "number" && json.code !== 0)
+    ) {
+      return { items: [], error: `twitter: ${json.message ?? json.error ?? json.msg ?? `code ${json.code}`}` };
     }
 
     const tweets = json.data?.tweets ?? [];
@@ -162,7 +160,11 @@ export const twitterAdapter: Adapter = async (ctx) => {
           author: authorHandle ? `@${authorHandle}` : null,
           content: truncate([text, metrics].filter(Boolean).join("\n\n"), 4000) || null,
           published_at: parsePublishedAt(t.createdAt),
-          engagement_score: tweetEngagement(t),
+          engagement_score: twitterEngagement(
+            Number(t.likeCount) || 0,
+            Number(t.retweetCount) || 0,
+            Number(t.replyCount) || 0,
+          ),
           raw: {
             tweet_id: t.id,
             handle: authorHandle,
