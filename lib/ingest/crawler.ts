@@ -55,6 +55,14 @@ const PLAYWRIGHT_NAV_TIMEOUT_MS = 25_000;
 // to whatever rendered, and the cheerio pass reports "0 items matched".
 const PLAYWRIGHT_SELECTOR_TIMEOUT_MS = 12_000;
 
+// A real desktop-Chrome UA for the rendered path. The whole point of driving a
+// browser is to look like one: our crawler USER_AGENT ("stackBrief/…") gets
+// bot-protected SPAs (e.g. Webflow-hosted sites) to serve an empty shell, so
+// the selector matches nothing. Must NOT contain "HeadlessChrome".
+const PLAYWRIGHT_BROWSER_UA =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 " +
+  "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+
 // Render a client-side SPA to HTML via headless Chromium and return its
 // outerHTML, so the same cheerio extraction below can run unchanged.
 //
@@ -83,7 +91,7 @@ async function fetchRenderedHtml(cfg: CrawlConfig): Promise<string> {
   }
   const browser = await chromium.launch({ headless: true });
   try {
-    const page = await browser.newPage({ userAgent: USER_AGENT });
+    const page = await browser.newPage({ userAgent: PLAYWRIGHT_BROWSER_UA });
     await page.goto(cfg.base_url, {
       waitUntil: "domcontentloaded",
       timeout: PLAYWRIGHT_NAV_TIMEOUT_MS,
