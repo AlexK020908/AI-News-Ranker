@@ -73,7 +73,13 @@ jobs:
         with:
           node-version: "22"
           cache: npm
+      # Skip Playwright's postinstall browser download: the runtime browser is
+      # installed once on the host at /opt/ms-playwright (PLAYWRIGHT_BROWSERS_PATH
+      # in /opt/ai-news-feed/.env), and the standalone bundle never ships it — so
+      # downloading ~170MB into the runner cache each build is pure waste.
       - run: npm ci --no-audit --no-fund
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
       - run: npm run lint
       # NEXT_PUBLIC_* values are inlined at build time, so they need to be in
       # the environment of `next build` — not just the runtime .env. Anything
