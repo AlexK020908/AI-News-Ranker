@@ -2,13 +2,18 @@ import type { Category } from "@/lib/types";
 
 // Resend REST API. No SDK dep — the call surface is one POST.
 const RESEND_URL = "https://api.resend.com/emails";
-const DEFAULT_FROM = "StackBrief <noreply@stackbrief.tech>";
+const DEFAULT_FROM = "StackBrief <brief@stackbrief.tech>";
 
 export interface SendEmailInput {
   to: string;
   subject: string;
   html: string;
   text: string;
+  // When set, adds RFC 8058 one-click List-Unsubscribe headers. Improves
+  // inbox placement (Gmail/Outlook favour — and bulk-sender rules effectively
+  // require — a one-click unsubscribe). Must be an absolute HTTPS URL whose
+  // endpoint unsubscribes on POST; /api/webhooks/unsubscribe does exactly that.
+  listUnsubscribeUrl?: string;
 }
 
 export interface SendEmailResult {
@@ -43,6 +48,14 @@ export async function sendEmail(
         subject: input.subject,
         html: input.html,
         text: input.text,
+        ...(input.listUnsubscribeUrl
+          ? {
+              headers: {
+                "List-Unsubscribe": `<${input.listUnsubscribeUrl}>`,
+                "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+              },
+            }
+          : {}),
       }),
       signal: controller.signal,
     });

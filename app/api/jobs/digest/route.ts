@@ -319,6 +319,7 @@ export async function GET(req: NextRequest) {
           subject: tmpl.subject,
           html: tmpl.html,
           text: tmpl.text,
+          listUnsubscribeUrl: unsubscribeUrl,
         });
         if (res.ok) pushed++;
         else pushFailed++;

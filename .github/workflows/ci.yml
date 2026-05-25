@@ -66,9 +66,9 @@ jobs:
           PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright
           # Email sending via Resend (lib/email.ts). Add RESEND_API_KEY as a
           # repo secret; EMAIL_FROM must be an address on a Resend-verified
-          # domain (defaults to noreply@stackbrief.tech in code if unset).
+          # domain (defaults to brief@stackbrief.tech in code if unset).
           RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}
-          EMAIL_FROM=StackBrief <noreply@stackbrief.tech>
+          EMAIL_FROM=StackBrief <brief@stackbrief.tech>
           EOF
 
   app:

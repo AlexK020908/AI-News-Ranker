@@ -216,6 +216,7 @@ export async function GET(req: NextRequest) {
         subject: tmpl.subject,
         html: tmpl.html,
         text: tmpl.text,
+        listUnsubscribeUrl: unsubscribeUrl,
       });
       if (res.ok) {
         // Record deliveries ONLY on success — see the Discord branch: the

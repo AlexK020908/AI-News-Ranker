@@ -22,7 +22,7 @@ if (!apiKey) return { ok: false, status: 0, error: "RESEND_API_KEY not set" };
 ### 2. A verified sending domain
 The `from` address defaults to:
 ```ts
-const DEFAULT_FROM = "StackBrief <noreply@stackbrief.tech>";
+const DEFAULT_FROM = "StackBrief <brief@stackbrief.tech>";
 ```
 (overridable via `EMAIL_FROM`). Resend **rejects** any send from a domain you
 haven't verified with DNS records (SPF/DKIM). That's the "source email."

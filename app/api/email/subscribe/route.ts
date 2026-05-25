@@ -79,6 +79,7 @@ export async function POST(req: NextRequest) {
     subject: tmpl.subject,
     html: tmpl.html,
     text: tmpl.text,
+    listUnsubscribeUrl: `${SITE_URL}/api/webhooks/unsubscribe?id=${data.id}&token=${manage_token}`,
   });
 
   if (!send.ok) {

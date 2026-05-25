@@ -58,12 +58,17 @@ alter table webhooks add constraint webhooks_channel_target check (
   )
 );
 
--- Partial unique on email so we don't re-subscribe the same address twice.
--- Postgres allows multiple NULLs in a plain unique, so making it partial
--- (where email is not null) just makes intent explicit.
-create unique index if not exists webhooks_email_unique
-  on webhooks (email)
-  where email is not null;
+-- Unique on email so we don't re-subscribe the same address twice. This MUST
+-- be a plain (non-partial) unique constraint, NOT a partial index: the
+-- subscribe upsert uses `ON CONFLICT (email)` with no predicate, and Postgres
+-- refuses to infer a PARTIAL index as the conflict arbiter without its WHERE
+-- predicate ("there is no unique or exclusion constraint matching the ON
+-- CONFLICT specification"). A plain unique still allows multiple NULL emails
+-- (Discord rows), so it's equivalent for dedup. Drop the old partial index if
+-- a prior version of this migration created it.
+drop index if exists webhooks_email_unique;
+alter table webhooks drop constraint if exists webhooks_email_unique;
+alter table webhooks add constraint webhooks_email_unique unique (email);
 
 -- Delivery-side query helper: notify/digest jobs fetch confirmed email
 -- subs and skip pending ones. This index makes that scan cheap.
