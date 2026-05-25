@@ -94,7 +94,7 @@ export default function Image() {
               maxWidth: 980,
             }}
           >
-            The only newsletter to keep up with AI.
+            The fastest way to keep up with AI.
           </div>
         </div>
 

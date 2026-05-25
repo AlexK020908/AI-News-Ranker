@@ -1,0 +1,8 @@
+<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="StackBrief">
+  <!-- Concept A: Receding stack. One bright "brief" on top; the source
+       layers recede beneath it (narrower + dimmer) for depth. -->
+  <rect x="20" y="24" width="60" height="14" rx="7" fill="#f5a73c"/>
+  <rect x="26" y="45" width="48" height="11" rx="5.5" fill="#52525b"/>
+  <rect x="31" y="62" width="38" height="10" rx="5" fill="#3f3f46"/>
+  <rect x="36" y="77" width="28" height="9" rx="4.5" fill="#2e2e35"/>
+</svg>

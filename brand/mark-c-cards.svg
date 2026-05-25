@@ -1,0 +1,9 @@
+<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="StackBrief">
+  <!-- Concept C: Offset panels. A stack of story cards; the top one is
+       the brief (amber). Reads as depth + "one on top". -->
+  <rect x="34" y="34" width="44" height="44" rx="11" fill="#2e2e35"/>
+  <rect x="29" y="29" width="44" height="44" rx="11" fill="#3f3f46"/>
+  <rect x="24" y="24" width="44" height="44" rx="11" fill="#f5a73c"/>
+  <!-- a single "brief line" on the top card -->
+  <rect x="31" y="33" width="22" height="5" rx="2.5" fill="#0a0a0c" opacity="0.55"/>
+</svg>

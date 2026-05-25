@@ -1,0 +1,8 @@
+<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" fill="none" role="img" aria-label="StackBrief">
+  <!-- Concept B: Convergence. Many source lines collapse into one brief. -->
+  <path d="M14 22 C 42 22, 44 50, 60 50" stroke="#52525b" stroke-width="6" stroke-linecap="round"/>
+  <path d="M14 40 C 42 40, 44 50, 60 50" stroke="#52525b" stroke-width="6" stroke-linecap="round"/>
+  <path d="M14 60 C 42 60, 44 50, 60 50" stroke="#52525b" stroke-width="6" stroke-linecap="round"/>
+  <path d="M14 78 C 42 78, 44 50, 60 50" stroke="#52525b" stroke-width="6" stroke-linecap="round"/>
+  <rect x="58" y="43" width="30" height="14" rx="7" fill="#f5a73c"/>
+</svg>

@@ -173,7 +173,7 @@ export function buildConfirmationEmail(confirmUrl: string): { subject: string; h
   const html = shell(
     subject,
     `<h1 style="margin:0 0 14px 0;font-size:24px;letter-spacing:-0.01em;color:#ececef;">One click to confirm.</h1>
-     <p style="margin:0 0 22px 0;color:rgba(236,236,239,0.72);font-size:15px;">You're almost subscribed to StackBrief — the only newsletter to keep up with AI. Hit the button below to confirm and we'll start sending.</p>
+     <p style="margin:0 0 22px 0;color:rgba(236,236,239,0.72);font-size:15px;">You're almost subscribed to StackBrief — the fastest way to keep up with AI. Hit the button below to confirm and we'll start sending.</p>
      <p style="margin:0 0 24px 0;"><a href="${escapeHtml(confirmUrl)}" style="display:inline-block;background:#f5a73c;color:#0a0a0c;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;font-weight:600;padding:12px 22px;border-radius:10px;text-decoration:none;letter-spacing:0.02em;">Confirm subscription</a></p>
      <p style="margin:0;font-size:12px;color:rgba(236,236,239,0.5);">If the button doesn't work, paste this into your browser:<br><span style="color:rgba(236,236,239,0.72);word-break:break-all;">${escapeHtml(confirmUrl)}</span></p>`,
     `Didn't sign up? Just ignore this email — we won't send anything else.`,

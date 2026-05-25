@@ -1,0 +1,4 @@
+id,url,min_importance,categories,enabled,manage_token,created_at,last_delivered_at,delivery_count,is_digest,kind,email,confirmed_at
+2d3163e4-398f-4461-8a1e-fc7349337690,,70,[],true,f99dd8a3b1d829ca8a4251eb123b221006aef053a833d522,2026-05-25 06:49:29.066768+00,,0,true,email,alexkang12345@outlook.com,2026-05-25 06:49:50.171+00
+8685fc02-2baf-4e78-84c7-28d56ed51f05,https://discord.com/api/webhooks/1508323749819187302/Aa_VLHiwW6iPc9qTb_Aq4CDCgc9EvDqdpUT5d660Zxu2mXowHShbJ8D-3rmF_unFysrW,65,[],true,bdb04121be3d193b98da094b3b336eb0d6b4c7e16f2565c3,2026-05-25 04:20:16.419158+00,2026-05-25 18:22:06.646+00,25,false,discord,,
+cca9d557-c5c3-4215-b881-8b7deeb71b05,,70,[],true,238943dc368c134f726cce263882c5560efa8aed00caf01c,2026-05-25 06:59:30.309805+00,,0,true,email,alexkang4777@gmail.com,2026-05-25 06:59:42.663+00

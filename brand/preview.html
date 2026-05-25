@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>StackBrief — logo concepts</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0a0a0c; --panel:#141417; --line:#26262b;
+    --fg:#ececef; --muted:rgba(236,236,239,0.55); --amber:#f5a73c;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--fg);
+    font-family:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+    padding:48px 32px; line-height:1.5;
+  }
+  h1{font-size:14px;font-weight:600;letter-spacing:.18em;text-transform:uppercase;color:var(--amber);margin:0 0 4px}
+  .sub{color:var(--muted);font-size:13px;margin:0 0 40px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:20px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:26px}
+  .name{font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:0 0 20px}
+  .hero{display:flex;align-items:center;gap:22px;margin-bottom:24px}
+  .hero img{width:96px;height:96px}
+  /* favicon row: real small sizes on a chip so you can judge legibility */
+  .sizes{display:flex;align-items:center;gap:18px;padding-top:18px;border-top:1px dashed var(--line)}
+  .chip{display:flex;flex-direction:column;align-items:center;gap:6px}
+  .chip span{font-size:10px;color:var(--muted)}
+  .chip .swatch{background:#1c1c20;border-radius:8px;padding:8px;display:flex;align-items:center;justify-content:center}
+  /* wordmark lockup */
+  .lock{display:flex;align-items:center;gap:12px;margin-top:24px}
+  .lock img{width:34px;height:34px}
+  .word{font-size:26px;font-weight:700;letter-spacing:-.02em}
+  .word .b{color:var(--amber)}
+  footer{margin-top:44px;color:var(--muted);font-size:12px}
+  a{color:var(--amber)}
+</style>
+</head>
+<body>
+  <h1>StackBrief</h1>
+  <p class="sub">Four marks on the same idea: a stack of sources, the <strong style="color:var(--fg)">brief</strong> on top (amber). Judge them at 16px — that's the favicon.</p>
+
+  <div class="grid">
+    <!-- A -->
+    <div class="card">
+      <p class="name">A · Receding stack</p>
+      <div class="hero">
+        <img src="mark-a-receding.svg" alt="">
+        <div class="lock"><img src="mark-a-receding.svg" alt=""><span class="word">Stack<span class="b">Brief</span></span></div>
+      </div>
+      <div class="sizes">
+        <div class="chip"><div class="swatch"><img src="mark-a-receding.svg" width="32" height="32" alt=""></div><span>32px</span></div>
+        <div class="chip"><div class="swatch"><img src="mark-a-receding.svg" width="16" height="16" alt=""></div><span>16px favicon</span></div>
+      </div>
+    </div>
+    <!-- B -->
+    <div class="card">
+      <p class="name">B · Convergence (many → one)</p>
+      <div class="hero">
+        <img src="mark-b-converging.svg" alt="">
+        <div class="lock"><img src="mark-b-converging.svg" alt=""><span class="word">Stack<span class="b">Brief</span></span></div>
+      </div>
+      <div class="sizes">
+        <div class="chip"><div class="swatch"><img src="mark-b-converging.svg" width="32" height="32" alt=""></div><span>32px</span></div>
+        <div class="chip"><div class="swatch"><img src="mark-b-converging.svg" width="16" height="16" alt=""></div><span>16px favicon</span></div>
+      </div>
+    </div>
+    <!-- C -->
+    <div class="card">
+      <p class="name">C · Offset panels</p>
+      <div class="hero">
+        <img src="mark-c-cards.svg" alt="">
+        <div class="lock"><img src="mark-c-cards.svg" alt=""><span class="word">Stack<span class="b">Brief</span></span></div>
+      </div>
+      <div class="sizes">
+        <div class="chip"><div class="swatch"><img src="mark-c-cards.svg" width="32" height="32" alt=""></div><span>32px</span></div>
+        <div class="chip"><div class="swatch"><img src="mark-c-cards.svg" width="16" height="16" alt=""></div><span>16px favicon</span></div>
+      </div>
+    </div>
+    <!-- D -->
+    <div class="card">
+      <p class="name">D · Flat stack, highlighted top</p>
+      <div class="hero">
+        <img src="mark-d-bars.svg" alt="">
+        <div class="lock"><img src="mark-d-bars.svg" alt=""><span class="word">Stack<span class="b">Brief</span></span></div>
+      </div>
+      <div class="sizes">
+        <div class="chip"><div class="swatch"><img src="mark-d-bars.svg" width="32" height="32" alt=""></div><span>32px</span></div>
+        <div class="chip"><div class="swatch"><img src="mark-d-bars.svg" width="16" height="16" alt=""></div><span>16px favicon</span></div>
+      </div>
+    </div>
+  </div>
+
+  <footer>Open this file in a browser. Tell me which letter wins (or which to remix) and I'll refine that one + wire it in as the favicon / nav logo.</footer>
+</body>
+</html>

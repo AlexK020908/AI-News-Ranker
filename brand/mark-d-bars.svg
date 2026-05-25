@@ -1,0 +1,7 @@
+<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="StackBrief">
+  <!-- Concept D: Flat stack, highlighted top. Most favicon-safe. Full-width
+       amber "brief" caps a stack of equal, muted source bars. -->
+  <rect x="22" y="26" width="56" height="13" rx="6.5" fill="#f5a73c"/>
+  <rect x="22" y="45" width="56" height="13" rx="6.5" fill="#4a4a52"/>
+  <rect x="22" y="64" width="56" height="13" rx="6.5" fill="#3a3a40"/>
+</svg>

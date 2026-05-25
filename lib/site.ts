@@ -8,7 +8,7 @@ export const SITE_URL =
   process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") || "https://stackbrief.tech";
 
 export const SITE_NAME = "StackBrief";
-export const SITE_TAGLINE = "the only newsletter to keep up with AI";
+export const SITE_TAGLINE = "the fastest way to keep up with AI";
 export const SITE_TITLE = `${SITE_NAME} — ${SITE_TAGLINE}`;
 export const SITE_DESCRIPTION =
   "Daily AI briefing across papers, models, repos, and news. Clustered across sources so you read each story once.";
