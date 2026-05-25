@@ -1,4 +1,5 @@
 import Parser from "rss-parser";
+import * as cheerio from "cheerio";
 import { stripHtml, truncate } from "@/lib/utils";
 import type { Adapter } from "./types";
 import { USER_AGENT } from "./types";
@@ -72,6 +73,56 @@ function extractThumbnail(it: Record<string, unknown>): string | null {
   return null;
 }
 
+const TECHMEME_HOST = /(^|\.)techmeme\.com$/i;
+
+function isTechmemeUrl(u: string): boolean {
+  try {
+    return TECHMEME_HOST.test(new URL(u).hostname);
+  } catch {
+    return false;
+  }
+}
+
+// Techmeme's feed points <link>/<guid> at a permalink page
+// (techmeme.com/260524/p16#a260524p16) rather than the underlying article, and
+// carries the thumbnail inline in the description HTML instead of via media:*
+// tags. The description leads with an anchor wrapping the image:
+//   <a href="REAL_ARTICLE"><img src="http://www.techmeme.com/260524/i16.jpg"></a>
+// We lift the real article URL + thumbnail out of there so cards link through
+// to the source and get a usable image. Scoped to techmeme.com links so it
+// can't hijack the <link> of a normal feed whose body happens to embed images.
+// http://… → https://…, and protocol-relative //host/… → https://host/… so a
+// schemeless src can't slip through to the thumbnail fetcher unupgraded.
+function toHttps(src: string): string {
+  if (src.startsWith("//")) return `https:${src}`;
+  return src.replace(/^http:\/\//i, "https://");
+}
+
+function extractTechmemeTarget(
+  html: string,
+): { url: string; thumbnail: string | null } | null {
+  if (!html) return null;
+  const $ = cheerio.load(html);
+  // Collect every external anchor that wraps an <img>. A Techmeme description
+  // can contain more than the lead anchor ("More:"/"Discussion:"/related-story
+  // links), so don't just take the first one.
+  const candidates: Array<{ url: string; src: string }> = [];
+  $("a").each((_, el) => {
+    const href = ($(el).attr("href") || "").trim();
+    if (!href || isTechmemeUrl(href)) return;
+    const src = ($(el).find("img").first().attr("src") || "").trim();
+    if (!src) return;
+    candidates.push({ url: href, src });
+  });
+  if (candidates.length === 0) return null;
+  // The headline anchor wraps the Techmeme-hosted lead thumbnail
+  // (techmeme.com/<id>/iNN.jpg). Prefer it so a related external link carrying
+  // its own (non-techmeme) image can't hijack the rewrite; fall back to the
+  // first image anchor if Techmeme ever stops self-hosting the thumbnail.
+  const lead = candidates.find((c) => isTechmemeUrl(c.src)) ?? candidates[0];
+  return { url: lead.url, thumbnail: toHttps(lead.src) };
+}
+
 export const rssAdapter: Adapter = async (ctx) => {
   const url = readStringConfig(ctx, "url").trim();
   if (!url) return { items: [], error: "rss: missing config.url" };
@@ -102,10 +153,20 @@ export const rssAdapter: Adapter = async (ctx) => {
             ? it.contentSnippet
             : stripHtml(String(rawHtml))
           ).trim();
-        const thumbnail = extractThumbnail(it);
+        let finalLink = link;
+        let thumbnail = extractThumbnail(it);
+        // Techmeme: <link> is a permalink page; rewrite to the real article and
+        // pull the inline thumbnail the feed doesn't expose via media:* tags.
+        if (isTechmemeUrl(link)) {
+          const tm = extractTechmemeTarget(String(rawHtml));
+          if (tm) {
+            finalLink = tm.url;
+            if (!thumbnail) thumbnail = tm.thumbnail;
+          }
+        }
         const xml = serializeItemXml({
           guid: externalId,
-          link,
+          link: finalLink,
           title,
           pubDate: pub,
           description: snippet,
@@ -117,7 +178,7 @@ export const rssAdapter: Adapter = async (ctx) => {
           null;
         return {
           external_id: externalId,
-          url: link,
+          url: finalLink,
           title: truncate(title, 500),
           author: author as string | null,
           content: snippet ? truncate(snippet, 4000) : null,

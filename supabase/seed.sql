@@ -258,6 +258,28 @@ insert into sources (slug, name, kind, region, config, poll_interval_sec) values
 ('understanding-ai',       'Understanding AI (Tim Lee)',  'rss', 'global',
   '{"url":"https://www.understandingai.org/feed"}',                                                  7200),
 
+-- ============== Added 2026-05-24: more tldr.tech-cited sources ==============
+-- Figma ships a working Atom feed (figma.com/blog/rss.xml is 404; the real
+-- endpoint is /blog/feed/atom.xml). Design-tool blog — AI-adjacent (the Figma
+-- Agent etc.), so weighted low like broad tech below.
+('figma-blog',             'Figma Blog',                  'rss', 'global',
+  '{"url":"https://www.figma.com/blog/feed/atom.xml"}',                                              7200),
+-- TLDR-audit adds (RSS live-tested 2026-05-24, all <20d fresh).
+('epoch-ai',               'Epoch AI',                    'rss', 'global',
+  '{"url":"https://epochai.substack.com/feed"}',                                                     21600),
+('transformer-news',       'Transformer News',            'rss', 'global',
+  '{"url":"https://transformernews.ai/feed"}',                                                       7200),
+('dropbox-tech',           'Dropbox Tech Blog',           'rss', 'global',
+  '{"url":"https://dropbox.tech/feed"}',                                                             21600),
+('nibzard',                'nibzard',                     'rss', 'global',
+  '{"url":"https://nibzard.com/rss.xml"}',                                                           21600),
+('dbreunig',               'Drew Breunig',                'rss', 'global',
+  '{"url":"https://www.dbreunig.com/feed.xml"}',                                                     21600),
+('tanay-jaipuria',         'Tanay Jaipuria',              'rss', 'global',
+  '{"url":"https://www.tanayj.com/feed"}',                                                           21600),
+('akash-bajwa',            'Akash Bajwa',                 'rss', 'global',
+  '{"url":"https://akashbajwa.co/feed"}',                                                            21600),
+
 -- ============== Analyst newsletters ==============
 ('latent-space',           'Latent Space',                'rss', 'global',
   '{"url":"https://www.latent.space/feed"}',                                                         7200),
@@ -333,6 +355,18 @@ insert into sources (slug, name, kind, region, config, poll_interval_sec) values
     "title_selector":"h3, h2, [class*=\"title\"], [class*=\"heading\"]",
     "url_prefix":"https://www.cerebras.ai",
     "max_items":40}',                                                                                3600),
+-- Cursor blog: despite an earlier "needs Playwright" assumption, the index is
+-- server-rendered — the post list ships as <a class="blog-directory__row">
+-- rows with a <time datetime> each. Selectors live-tested 2026-05-24
+-- (12 items, all dated + canonical /blog/<slug> URLs). No JS needed.
+('cursor-blog-crawled',        'Cursor Blog (first-party)',        'crawler', 'global',
+  '{"base_url":"https://cursor.com/blog",
+    "item_selector":"a.blog-directory__row",
+    "title_selector":"p",
+    "date_selector":"time",
+    "date_attr":"datetime",
+    "url_prefix":"https://cursor.com",
+    "max_items":30}',                                                                                3600),
 
 -- ============== Crawler — STUB (DISABLED below) ==============
 -- RSS broken or page reachable but selectors not yet validated.
@@ -352,10 +386,6 @@ insert into sources (slug, name, kind, region, config, poll_interval_sec) values
   '{"base_url":"https://www.anthropic.com/engineering"}',                                            3600),
 ('claude-com-blog-crawled',   'Claude.com Product Blog (crawl)', 'crawler', 'global',
   '{"base_url":"https://claude.com/blog"}',                                                          3600),
--- Cursor blog: no RSS endpoint exists. Stub kept for a future maintainer to
--- wire up selectors / Playwright. Disabled by default below.
-('cursor-blog-crawled',       'Cursor Blog (crawl)',         'crawler', 'global',
-  '{"base_url":"https://cursor.com/blog","needs":"playwright"}',                                     3600),
 -- Need Playwright (JS-rendered SPAs / anti-bot 403s).
 ('xai-blog-crawled',          'xAI Blog (Playwright)',       'crawler', 'global',
   '{"base_url":"https://x.ai/blog","needs":"playwright"}',                                           3600),
@@ -365,8 +395,17 @@ insert into sources (slug, name, kind, region, config, poll_interval_sec) values
   '{"base_url":"https://cohere.com/blog","needs":"playwright"}',                                     7200),
 ('perplexity-crawled',        'Perplexity (Playwright)',     'crawler', 'global',
   '{"base_url":"https://www.perplexity.ai/hub","needs":"playwright"}',                               7200),
+-- Stability AI: Playwright-rendered, selectors live-tested 2026-05-24 (25
+-- items, clean titles + /news-updates/<slug> URLs). Item element IS the link;
+-- title comes from the crawler's anchor-text fallback. No reliable per-item
+-- date in the markup, so published_at stays null (kept as unknown-age).
+-- ENABLED, but only ingests once the host has Chromium (see crawler.ts).
 ('stability-crawled',         'Stability AI (Playwright)',   'crawler', 'global',
-  '{"base_url":"https://stability.ai/news","needs":"playwright"}',                                   7200)
+  '{"base_url":"https://stability.ai/news",
+    "item_selector":"a[href^=\"/news-updates/\"]",
+    "url_prefix":"https://stability.ai",
+    "max_items":25,
+    "needs":"playwright"}',                                                                          7200)
 
 on conflict (slug) do update set
   name              = excluded.name,
@@ -395,14 +434,23 @@ update sources set enabled = false where slug in (
   'cerebras-blog', 'papers-with-code'
 );
 
--- Crawler stubs without verified selectors + Playwright-required ones.
+-- Crawler stubs without verified selectors. The Playwright ones below still
+-- need per-site selector discovery + a live test (the crawler.ts Playwright
+-- path exists as of 2026-05-24, but these specific sites aren't wired):
+--   xai-blog-crawled        x.ai/news — networkidle nav times out; retry w/ domcontentloaded
+--   cohere-blog-crawled     cohere.com/blog renders, but post cards need selector work
+--   perplexity-crawled      renders, but Framer hashed-class markup concatenates title+date
+--   inflection-blog-crawled untested
+-- Qwen was investigated and deliberately NOT added: qwen.ai/blog is an Alibaba
+-- ICE SPA whose post list fails to populate even under headless Chromium
+-- (empty <body>), with no list API and nothing embedded in HTML. Not feasible.
+-- stability-crawled is now verified + enabled (see above).
 update sources set enabled = false where slug in (
   'ai21-blog-crawled', 'langchain-crawled', 'pinecone-crawled',
   'anyscale-crawled', 'lightning-ai-crawled', 'stanford-hai-crawled',
   'anthropic-engineering-crawled', 'claude-com-blog-crawled',
-  'cursor-blog-crawled',
   'xai-blog-crawled', 'inflection-blog-crawled', 'cohere-blog-crawled',
-  'perplexity-crawled', 'stability-crawled'
+  'perplexity-crawled'
 );
 
 -- Stale publishers — feeds parse but newest item is past the 60d staleness
@@ -455,7 +503,10 @@ update sources set reputation_weight = 1.4 where slug in (
   '80000-hours',
   -- 2026-05-22 additions: first-party engineering blogs from major
   -- AI-operating companies. Same tier as the other first-party tech blogs.
-  'pytorch-blog', 'spotify-engineering', 'meta-engineering', 'vercel-blog'
+  'pytorch-blog', 'spotify-engineering', 'meta-engineering', 'vercel-blog',
+  -- 2026-05-24: first-party AI coding-tool blog + first-party eng blog,
+  -- AI compute/scaling research org, and a frontier model lab (crawled).
+  'cursor-blog-crawled', 'dropbox-tech', 'epoch-ai', 'stability-crawled'
 );
 
 update sources set reputation_weight = 1.2 where slug in (
@@ -468,7 +519,9 @@ update sources set reputation_weight = 1.2 where slug in (
   'rest-of-world', 'ea-forum-ai',
   -- 2026-05-22 additions: curated AI commentary / analyst tier
   'pragmatic-engineer', 'techmeme', 'tom-tunguz', 'algorithmic-bridge',
-  'understanding-ai'
+  'understanding-ai',
+  -- 2026-05-24: AI policy news + independent AI analysts.
+  'transformer-news', 'dbreunig', 'tanay-jaipuria', 'akash-bajwa', 'nibzard'
 );
 
 update sources set reputation_weight = 0.8 where slug in (
@@ -477,5 +530,7 @@ update sources set reputation_weight = 0.8 where slug in (
   'axios-ai', 'cnbc-tech',
   -- 2026-05-22 additions: broad tech journalism (heavy AI coverage but
   -- often re-reports the primary source).
-  'thenextweb', '9to5google', 'searchengineland', 'testingcatalog'
+  'thenextweb', '9to5google', 'searchengineland', 'testingcatalog',
+  -- 2026-05-24: design-tool blog, AI-adjacent.
+  'figma-blog'
 );

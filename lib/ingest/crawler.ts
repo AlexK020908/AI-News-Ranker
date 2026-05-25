@@ -21,6 +21,10 @@ interface CrawlConfig {
   thumb_attr?: string;
   url_prefix?: string;
   max_items?: number;
+  // When "playwright", fetch the page through a headless Chromium so
+  // client-rendered SPAs (no server HTML, no RSS) become scrapeable. Plain
+  // `fetch` otherwise. See fetchRenderedHtml for the deploy requirements.
+  needs?: string;
 }
 
 function readCrawlConfig(raw: Record<string, unknown>): CrawlConfig | string {
@@ -41,7 +45,58 @@ function readCrawlConfig(raw: Record<string, unknown>): CrawlConfig | string {
     thumb_attr: optStr(raw.thumb_attr) ?? "src",
     url_prefix: optStr(raw.url_prefix),
     max_items: typeof raw.max_items === "number" ? raw.max_items : 40,
+    needs: optStr(raw.needs),
   };
+}
+
+const PLAYWRIGHT_NAV_TIMEOUT_MS = 25_000;
+// Cap how long we wait for the item list to materialise after navigation.
+// Shorter than nav timeout: if the selector never appears we still fall back
+// to whatever rendered, and the cheerio pass reports "0 items matched".
+const PLAYWRIGHT_SELECTOR_TIMEOUT_MS = 12_000;
+
+// Render a client-side SPA to HTML via headless Chromium and return its
+// outerHTML, so the same cheerio extraction below can run unchanged.
+//
+// Lazy `import("playwright")` keeps the dependency off the hot path: only
+// sources tagged needs:playwright load it, and a deploy that never enables a
+// Playwright source doesn't need the package or a browser at all.
+//
+// Production (EC2 + Next.js standalone) requires, beyond `npm i`:
+//   1. `npx playwright install chromium` on the host (the standalone trace
+//      does NOT bundle the browser binary), and PLAYWRIGHT_BROWSERS_PATH
+//      pointing at that cache if it isn't the default.
+//   2. Chromium's shared libs present (on Amazon Linux, dnf-install them;
+//      `playwright install-deps` only knows Debian/Ubuntu).
+//   3. next.config outputFileTracingIncludes covering playwright-core so the
+//      JS half of the package ships in the standalone bundle.
+// Each launch is ~300-500MB resident; ingest concurrency can run a few at
+// once, so keep Playwright sources on long poll intervals.
+async function fetchRenderedHtml(cfg: CrawlConfig): Promise<string> {
+  let chromium: typeof import("playwright").chromium;
+  try {
+    ({ chromium } = await import("playwright"));
+  } catch {
+    throw new Error(
+      "playwright not installed — needs:playwright source requires the package + a chromium browser on the host",
+    );
+  }
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage({ userAgent: USER_AGENT });
+    await page.goto(cfg.base_url, {
+      waitUntil: "domcontentloaded",
+      timeout: PLAYWRIGHT_NAV_TIMEOUT_MS,
+    });
+    // Best-effort wait for the actual content; tolerate timeout and scrape
+    // whatever rendered (the cheerio pass surfaces a clear "0 items" error).
+    await page
+      .waitForSelector(cfg.item_selector, { timeout: PLAYWRIGHT_SELECTOR_TIMEOUT_MS })
+      .catch(() => {});
+    return await page.content();
+  } finally {
+    await browser.close();
+  }
 }
 
 function optStr(v: unknown): string | undefined {
@@ -63,17 +118,21 @@ export const crawlerAdapter: Adapter = async (ctx) => {
 
   let html: string;
   try {
-    const resp = await fetch(cfg.base_url, {
-      signal: AbortSignal.timeout(15_000),
-      headers: {
-        "User-Agent": USER_AGENT,
-        Accept: "text/html,application/xhtml+xml",
-      },
-    });
-    if (!resp.ok) {
-      return { items: [], error: `crawler: ${cfg.base_url} -> HTTP ${resp.status}` };
+    if (cfg.needs === "playwright") {
+      html = await fetchRenderedHtml(cfg);
+    } else {
+      const resp = await fetch(cfg.base_url, {
+        signal: AbortSignal.timeout(15_000),
+        headers: {
+          "User-Agent": USER_AGENT,
+          Accept: "text/html,application/xhtml+xml",
+        },
+      });
+      if (!resp.ok) {
+        return { items: [], error: `crawler: ${cfg.base_url} -> HTTP ${resp.status}` };
+      }
+      html = await resp.text();
     }
-    html = await resp.text();
   } catch (e) {
     return { items: [], error: `crawler: fetch failed — ${(e as Error).message}` };
   }
@@ -90,9 +149,11 @@ export const crawlerAdapter: Adapter = async (ctx) => {
 
     const $el = $(el);
 
-    // Title
+    // Title. Last resort $el.text() covers list markups where the item
+    // element IS the link and the title is just its text (no inner heading) —
+    // common in SPA card layouts with hashed/utility class names.
     const $title = $el.find(titleSel).first();
-    const title = ($title.text() || $el.attr("title") || "").trim();
+    const title = ($title.text() || $el.attr("title") || $el.text() || "").trim();
     if (!title) return;
 
     let href: string | undefined;

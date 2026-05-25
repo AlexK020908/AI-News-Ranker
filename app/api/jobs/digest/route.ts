@@ -14,6 +14,7 @@ import {
 import { postToDiscord } from "@/lib/webhooks";
 import { sendEmail, buildDigestEmail } from "@/lib/email";
 import { extractJsonBlock, runPool } from "@/lib/utils";
+import { SITE_URL } from "@/lib/site";
 import type { Category } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -296,9 +297,10 @@ export async function GET(req: NextRequest) {
     s.kind === "discord" || (s.kind === "email" && s.confirmed_at),
   );
 
-  const origin =
-    process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ??
-    `${req.nextUrl.protocol}//${req.nextUrl.host}`;
+  // SITE_URL uses `||` with a production fallback, so an empty
+  // NEXT_PUBLIC_SITE_URL can't leak through as "" and produce relative
+  // /api/... links in digest emails (the `??` pattern this replaced did).
+  const origin = SITE_URL;
   const periodLabel = formatPeriodLabel(period.end);
 
   let pushed = 0;

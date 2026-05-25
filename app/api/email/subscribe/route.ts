@@ -3,6 +3,7 @@ import { z } from "zod";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { generateManageToken } from "@/lib/webhooks";
 import { sendEmail, isValidEmail, buildConfirmationEmail } from "@/lib/email";
+import { SITE_URL } from "@/lib/site";
 import { CATEGORIES } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -102,13 +103,10 @@ export async function POST(req: NextRequest) {
   });
 }
 
-function getOrigin(req: NextRequest): string {
-  return (
-    process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ??
-    `${req.nextUrl.protocol}//${req.nextUrl.host}`
-  );
-}
-
-function buildConfirmUrl(req: NextRequest, id: string, token: string): string {
-  return `${getOrigin(req)}/api/email/confirm?id=${id}&token=${token}`;
+function buildConfirmUrl(_req: NextRequest, id: string, token: string): string {
+  // SITE_URL uses `||` with a production fallback, so an empty
+  // NEXT_PUBLIC_SITE_URL can't slip through as "" and yield a relative
+  // /api/email/confirm link the subscriber can't click (the `??` getOrigin
+  // this replaced had exactly that bug).
+  return `${SITE_URL}/api/email/confirm?id=${id}&token=${token}`;
 }

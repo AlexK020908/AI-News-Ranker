@@ -59,17 +59,17 @@ These shipped with the SEO changes; no action needed, listed so you know what's 
 > For a coined name like "StackBrief" there's almost no competition, so
 > indexing alone typically earns the #1 spot within days.
 
-- [ ] **2.1 — Google Search Console** — https://search.google.com/search-console
+- [x] **2.1 — Google Search Console** — https://search.google.com/search-console
   - Add property → **Domain** property `stackbrief.tech` (verify via the DNS
     TXT record they give you), or URL-prefix `https://stackbrief.tech`.
   - **Sitemaps** → submit `https://stackbrief.tech/sitemap.xml`.
   - **URL Inspection** → enter the homepage → **Request indexing**.
 
-- [ ] **2.2 — Bing Webmaster Tools** — https://www.bing.com/webmasters
+- [x] **2.2 — Bing Webmaster Tools** — https://www.bing.com/webmasters
   - Add the site (you can import directly from Google Search Console).
   - Submit the same sitemap. (Bing also feeds Copilot / ChatGPT search.)
 
-- [ ] **2.3 — Validate structured data** on the live URL:
+- [x] **2.3 — Validate structured data** on the live URL:
   - https://search.google.com/test/rich-results → enter `https://stackbrief.tech`
   - https://validator.schema.org → paste the URL
   - Confirm both **Organization** and **WebSite** parse with no errors.

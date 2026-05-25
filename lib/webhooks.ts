@@ -89,15 +89,30 @@ export function buildItemEmbed(item: NotifyItem, manageUrl?: string): DiscordPay
   ];
   if (item.category) fields.push({ name: "Category", value: item.category, inline: true });
 
+  // Discord embed footers render as PLAIN TEXT — no markdown, no links. A raw
+  // URL there is a long, unclickable eyesore. Embed descriptions DO support
+  // masked links, so the unsubscribe control lives at the end of the
+  // description as a tidy `[Unsubscribe](url)`. The masked link only renders
+  // when the URL is absolute (https://…); a relative path would print the
+  // literal markdown, so we guard on it.
+  const summary = (item.summary ?? "").slice(0, 400);
+  const showUnsub = manageUrl && /^https?:\/\//.test(manageUrl);
+  // When we append a masked [Unsubscribe](url), backslash-escape any brackets
+  // in the summary so an unbalanced '[' can't pair with our '](url)' and
+  // hijack the link's visible text/target. Skipped when there's no link to
+  // protect, leaving the summary untouched.
+  const body = showUnsub ? summary.replace(/[[\]]/g, (c) => `\\${c}`) : summary;
+  const description = showUnsub
+    ? `${body}${body ? "\n\n" : ""}[Unsubscribe](${manageUrl})`
+    : body;
+
   const embed: DiscordEmbed = {
     title: item.title.slice(0, 256),
-    description: (item.summary ?? "").slice(0, 400),
+    description,
     url: item.url,
     color: importanceColor(importance),
     fields,
-    footer: manageUrl
-      ? { text: `StackBrief · unsubscribe: ${manageUrl}` }
-      : { text: "StackBrief" },
+    footer: { text: "StackBrief" },
     timestamp: item.published_at ?? undefined,
   };
 

@@ -4,6 +4,7 @@ import { isAuthorizedJob } from "@/lib/job-auth";
 import { buildItemEmbed, postToDiscord, type NotifyItem } from "@/lib/webhooks";
 import { sendEmail, buildItemAlertEmail, type EmailItem } from "@/lib/email";
 import { runPool } from "@/lib/utils";
+import { SITE_URL } from "@/lib/site";
 import type { Category } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -30,6 +31,7 @@ interface WebhookRow {
   manage_token: string;
   is_digest: boolean | null;
   confirmed_at: string | null;
+  created_at: string;
 }
 
 interface CandidateItem {
@@ -61,7 +63,7 @@ export async function GET(req: NextRequest) {
   // digest does NOT want a stream of per-item alerts on top.
   const { data: webhooks, error: wErr } = await supabase
     .from("webhooks")
-    .select("id, kind, url, email, min_importance, categories, manage_token, is_digest, confirmed_at")
+    .select("id, kind, url, email, min_importance, categories, manage_token, is_digest, confirmed_at, created_at")
     .eq("enabled", true)
     .or("is_digest.is.null,is_digest.eq.false");
 
@@ -94,20 +96,28 @@ export async function GET(req: NextRequest) {
   const candidates = (items ?? []) as unknown as CandidateItem[];
   if (candidates.length === 0) return Response.json({ ok: true, webhooks: subs.length, delivered: 0 });
 
-  const origin =
-    process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ??
-    `${req.nextUrl.protocol}//${req.nextUrl.host}`;
+  // `??` would let an empty NEXT_PUBLIC_SITE_URL through as "", producing
+  // relative `/api/webhooks/...` links in messages. SITE_URL uses `||` with a
+  // production fallback, so the origin is always an absolute https URL.
+  const origin = SITE_URL;
 
   let delivered = 0;
   let failed = 0;
 
   for (const sub of subs) {
+    // Don't flush the existing backlog at a fresh subscriber: only send items
+    // the pipeline enriched AFTER they joined. For email, "joined" means
+    // confirmed_at (they're inactive until they confirm); Discord subs have no
+    // confirmed_at, so created_at is the cutoff. webhook_deliveries dedupe still
+    // applies on top — this just stops the initial dump of pre-existing items.
+    const subscribedAt = sub.confirmed_at ?? sub.created_at;
     const eligible = candidates.filter((it) => {
       const imp = it.importance ?? 0;
       if (imp < sub.min_importance) return false;
       if (sub.categories.length > 0 && (!it.category || !sub.categories.includes(it.category))) {
         return false;
       }
+      if (it.enriched_at <= subscribedAt) return false;
       return true;
     });
     if (eligible.length === 0) continue;
@@ -135,6 +145,12 @@ export async function GET(req: NextRequest) {
 
     if (sub.kind === "discord" && sub.url) {
       const discordUrl = sub.url;
+      // Tally successes in-pool and write the counter ONCE after the pool
+      // drains. Per-item updates here would race: CONCURRENCY workers each do a
+      // read-modify-write on the same webhook's delivery_count, clobbering each
+      // other so the count under-reports. (JS is single-threaded, so the ++ is
+      // safe; the DB read-modify-write is what races.)
+      let okCount = 0;
       await runPool(toSend, CONCURRENCY, async (it) => {
         const notifyItem: NotifyItem = {
           id: it.id,
@@ -159,13 +175,7 @@ export async function GET(req: NextRequest) {
 
         if (res.ok) {
           delivered++;
-          await supabase
-            .from("webhooks")
-            .update({
-              last_delivered_at: new Date().toISOString(),
-              delivery_count: await incrementCount(supabase, sub.id),
-            })
-            .eq("id", sub.id);
+          okCount++;
         } else {
           failed++;
           // Discord returns 404/410 for deleted webhooks — auto-disable so we stop retrying.
@@ -174,6 +184,15 @@ export async function GET(req: NextRequest) {
           }
         }
       });
+      if (okCount > 0) {
+        await supabase
+          .from("webhooks")
+          .update({
+            last_delivered_at: new Date().toISOString(),
+            delivery_count: await incrementCount(supabase, sub.id, okCount),
+          })
+          .eq("id", sub.id);
+      }
     } else if (sub.kind === "email" && sub.email) {
       const emailItems: EmailItem[] = toSend.map((it) => ({
         title: it.title,

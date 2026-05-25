@@ -7,6 +7,7 @@ import {
   postToDiscord,
 } from "@/lib/webhooks";
 import { CATEGORIES } from "@/lib/types";
+import { SITE_URL } from "@/lib/site";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -89,9 +90,9 @@ export async function POST(req: NextRequest) {
   });
 }
 
-function buildUnsubscribeUrl(req: NextRequest, id: string, token: string): string {
-  const origin =
-    process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ??
-    `${req.nextUrl.protocol}//${req.nextUrl.host}`;
-  return `${origin}/api/webhooks/unsubscribe?id=${id}&token=${token}`;
+function buildUnsubscribeUrl(_req: NextRequest, id: string, token: string): string {
+  // SITE_URL uses `||` with a production fallback, so this is always an
+  // absolute https URL — an empty NEXT_PUBLIC_SITE_URL can't leak through as
+  // a relative path the way a `??` fallback would.
+  return `${SITE_URL}/api/webhooks/unsubscribe?id=${id}&token=${token}`;
 }
