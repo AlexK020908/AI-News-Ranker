@@ -109,7 +109,10 @@ function extractTechmemeTarget(
   const candidates: Array<{ url: string; src: string }> = [];
   $("a").each((_, el) => {
     const href = ($(el).attr("href") || "").trim();
-    if (!href || isTechmemeUrl(href)) return;
+    // Require an absolute http(s) target: a relative/fragment href would slip
+    // past isTechmemeUrl (new URL() throws → treated as external) and get
+    // stored verbatim as the item url, producing a broken link.
+    if (!href || !/^https?:\/\//i.test(href) || isTechmemeUrl(href)) return;
     const src = ($(el).find("img").first().attr("src") || "").trim();
     if (!src) return;
     candidates.push({ url: href, src });

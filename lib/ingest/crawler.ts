@@ -149,11 +149,16 @@ export const crawlerAdapter: Adapter = async (ctx) => {
 
     const $el = $(el);
 
-    // Title. Last resort $el.text() covers list markups where the item
+    // Title. The $el.text() fallback covers list markups where the item
     // element IS the link and the title is just its text (no inner heading) —
-    // common in SPA card layouts with hashed/utility class names.
+    // common in SPA card layouts with hashed/utility class names. Gate it on
+    // there being NO configured title_selector: when a selector IS set but
+    // misses, keep the old behaviour (skip the item) so a markup change shows
+    // up as "0 items matched" instead of silently ingesting the whole card's
+    // concatenated text as a title.
     const $title = $el.find(titleSel).first();
-    const title = ($title.text() || $el.attr("title") || $el.text() || "").trim();
+    const ownTextFallback = cfg.title_selector ? "" : $el.text();
+    const title = ($title.text() || $el.attr("title") || ownTextFallback || "").trim();
     if (!title) return;
 
     let href: string | undefined;

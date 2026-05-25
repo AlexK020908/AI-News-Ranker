@@ -117,7 +117,10 @@ export async function GET(req: NextRequest) {
       if (sub.categories.length > 0 && (!it.category || !sub.categories.includes(it.category))) {
         return false;
       }
-      if (it.enriched_at <= subscribedAt) return false;
+      // Compare as instants, not strings: PostgREST timestamptz values can
+      // vary in fractional-second width (".000" vs none), which makes a
+      // lexicographic <= misorder two times within the same second.
+      if (Date.parse(it.enriched_at) <= Date.parse(subscribedAt)) return false;
       return true;
     });
     if (eligible.length === 0) continue;
@@ -165,15 +168,18 @@ export async function GET(req: NextRequest) {
         };
         const payload = buildItemEmbed(notifyItem, unsubscribeUrl);
         const res = await postToDiscord(discordUrl, payload);
-        const status = res.ok ? "ok" : `err:${res.status}`;
-
-        await supabase.from("webhook_deliveries").insert({
-          webhook_id: sub.id,
-          item_id: it.id,
-          status,
-        });
 
         if (res.ok) {
+          // Record the delivery ONLY on success. webhook_deliveries has PK
+          // (webhook_id, item_id) and is write-once, so recording a failed
+          // send would permanently block the retry — the dedupe lookup above
+          // would treat the item as already delivered. Leaving the slot empty
+          // lets the next tick resend after a transient Discord failure.
+          await supabase.from("webhook_deliveries").insert({
+            webhook_id: sub.id,
+            item_id: it.id,
+            status: "ok",
+          });
           delivered++;
           okCount++;
         } else {
@@ -211,18 +217,17 @@ export async function GET(req: NextRequest) {
         html: tmpl.html,
         text: tmpl.text,
       });
-      const status = res.ok ? "ok" : `err:${res.status}`;
-
-      // One delivery row per item even though we sent a single bundled
-      // email — keeps the dedupe contract identical across channels.
-      const rows = toSend.map((it) => ({
-        webhook_id: sub.id,
-        item_id: it.id,
-        status,
-      }));
-      await supabase.from("webhook_deliveries").insert(rows);
-
       if (res.ok) {
+        // Record deliveries ONLY on success — see the Discord branch: the
+        // (webhook_id, item_id) PK is write-once, so a recorded failure would
+        // permanently suppress the retry. One row per bundled item keeps the
+        // dedupe contract identical across channels.
+        const rows = toSend.map((it) => ({
+          webhook_id: sub.id,
+          item_id: it.id,
+          status: "ok",
+        }));
+        await supabase.from("webhook_deliveries").insert(rows);
         delivered += toSend.length;
         await supabase
           .from("webhooks")

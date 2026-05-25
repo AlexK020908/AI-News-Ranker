@@ -87,7 +87,32 @@ export async function upsertItems(
     }
   }
 
-  const newItems = unique.filter((i) => !urlToId.has(i.url));
+  // Guard the SECOND unique constraint, items_source_external_unique
+  // (source_id, external_id). An item whose url changed since first ingest —
+  // e.g. Techmeme rewriting a permalink's lead article (lib/ingest/rss.ts) —
+  // passes the url lookup above as "new", then violates (source_id,
+  // external_id) on insert; onConflict:"url" doesn't catch it, so the whole
+  // chunk throws (line below) and the source's ingest tick aborts. Pre-fetch
+  // existing external_ids for this source and treat them as already-seen:
+  // keep the existing row rather than inserting a colliding duplicate.
+  const externalIds = unique.map((i) => i.external_id);
+  const seenExternalIds = new Set<string>();
+  for (let i = 0; i < externalIds.length; i += LOOKUP_CHUNK) {
+    const slice = externalIds.slice(i, i + LOOKUP_CHUNK);
+    const { data, error } = await supabase
+      .from("items")
+      .select("external_id")
+      .eq("source_id", sourceId)
+      .in("external_id", slice);
+    if (error) throw new Error(`lookup existing external_id: ${error.message}`);
+    for (const row of (data ?? []) as { external_id: string }[]) {
+      seenExternalIds.add(row.external_id);
+    }
+  }
+
+  const newItems = unique.filter(
+    (i) => !urlToId.has(i.url) && !seenExternalIds.has(i.external_id),
+  );
 
   const rows = await Promise.all(
     newItems.map(async (i) => {

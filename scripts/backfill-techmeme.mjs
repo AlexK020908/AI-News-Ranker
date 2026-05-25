@@ -78,7 +78,9 @@ function extractTechmemeTarget(html) {
   const candidates = [];
   $("a").each((_, el) => {
     const href = ($(el).attr("href") || "").trim();
-    if (!href || isTechmemeUrl(href)) return;
+    // Require an absolute http(s) target (lockstep with rss.ts): a relative
+    // href would slip past isTechmemeUrl and be stored verbatim as the url.
+    if (!href || !/^https?:\/\//i.test(href) || isTechmemeUrl(href)) return;
     const src = ($(el).find("img").first().attr("src") || "").trim();
     if (!src) return;
     candidates.push({ url: href, src });
