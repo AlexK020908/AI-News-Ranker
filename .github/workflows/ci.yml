@@ -6,7 +6,8 @@
 #             ITEM_RETENTION_DAYS, NEXT_PUBLIC_SITE_URL,
 #             S3_BUCKET, S3_REGION, S3_ENDPOINT, S3_FORCE_PATH_STYLE,
 #             S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY, S3_PUBLIC_BASE_URL,
-#             WORKER_TARGET, WORKER_INTERVAL_SEC
+#             WORKER_TARGET, WORKER_INTERVAL_SEC, RESEND_API_KEY,
+#             TWITTERAPI_IO_KEY
 # Secrets are only read here (push to main, self-hosted). PR validation runs
 # on hosted runners with no secrets — see .github/workflows/pr-checks.yml.
 #
@@ -75,6 +76,10 @@ jobs:
           # domain (defaults to brief@stackbrief.tech in code if unset).
           RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}
           EMAIL_FROM=StackBrief <brief@stackbrief.tech>
+          # X/Twitter ingest via twitterapi.io (lib/ingest/twitter.ts). Read-only
+          # API key (no account/cookies). Without it the twitter sources cleanly
+          # no-op — the /x section just stays empty, nothing else breaks.
+          TWITTERAPI_IO_KEY=${{ secrets.TWITTERAPI_IO_KEY }}
           EOF
 
   app:
