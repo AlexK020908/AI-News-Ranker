@@ -46,9 +46,18 @@ interface Tweet {
 }
 
 interface LastTweetsResponse {
-  tweets?: Tweet[];
   status?: string;
+  code?: number;
+  msg?: string;
   message?: string;
+  error?: string;
+  // The live user/last_tweets endpoint nests the tweet list under `data`
+  // ({status, code, data:{pin_tweet, tweets}}) — despite the public docs
+  // showing `tweets` at the top level. Read data.tweets.
+  data?: {
+    tweets?: Tweet[];
+    pin_tweet?: unknown;
+  };
 }
 
 function readBoolConfig(ctx: IngestContext, key: string, fallback: boolean): boolean {
@@ -126,12 +135,16 @@ export const twitterAdapter: Adapter = async (ctx) => {
       return { items: [], error: `twitter: ${res.status} ${body.slice(0, 160)}` };
     }
     const json = (await res.json()) as LastTweetsResponse;
-    if (json.status === "error") {
-      return { items: [], error: `twitter: ${json.message ?? "api error"}` };
+    // Success envelope is {status:"success", code:0, data:{tweets}}. Failures
+    // come back (sometimes with HTTP 200) as {error, code:-1} or
+    // {status:"error", message}, so check all three rather than just status.
+    if (json.error || json.code === -1 || json.status === "error") {
+      return { items: [], error: `twitter: ${json.message ?? json.error ?? json.msg ?? "api error"}` };
     }
 
-    const handle = userName || json.tweets?.[0]?.author?.userName || "";
-    const items = (json.tweets ?? [])
+    const tweets = json.data?.tweets ?? [];
+    const handle = userName || tweets[0]?.author?.userName || "";
+    const items = tweets
       .filter((t) => t && t.id && t.text)
       .filter((t) => includeRetweets || !t.retweeted_tweet)
       .filter((t) => includeReplies || !t.isReply)
