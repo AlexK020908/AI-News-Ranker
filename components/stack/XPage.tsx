@@ -9,6 +9,44 @@ import { ClusterDetail } from "./ClusterDetail";
 
 interface Props {
   clusters: StackCluster[];
+  brief?: string | null;
+}
+
+// Minimal markdown → elements for the brief: `# h1`, `## h2`, `*meta line*`,
+// blank-separated paragraphs, and inline `**bold**`. The brief prompt only ever
+// emits those, so a full markdown lib would be overkill. Themed via site CSS
+// (the .x-brief classes) rather than inline colors so light/dark both work.
+function renderBrief(markdown: string) {
+  const blocks: React.ReactNode[] = [];
+  let para: string[] = [];
+  const flush = (key: string) => {
+    if (para.length === 0) return;
+    blocks.push(
+      <p key={key} className="x-brief__p">{inline(para.join(" "))}</p>,
+    );
+    para = [];
+  };
+  markdown.split("\n").forEach((raw, i) => {
+    const line = raw.trim();
+    if (line === "") { flush(`p${i}`); return; }
+    if (line.startsWith("## ")) { flush(`p${i}`); blocks.push(<h2 key={i} className="x-brief__h2">{line.slice(3)}</h2>); return; }
+    if (line.startsWith("# "))  { flush(`p${i}`); blocks.push(<h1 key={i} className="x-brief__h1">{line.slice(2)}</h1>); return; }
+    if (line.startsWith("*") && line.endsWith("*") && !line.startsWith("**")) {
+      flush(`p${i}`); blocks.push(<div key={i} className="x-brief__meta">{line.slice(1, -1)}</div>); return;
+    }
+    para.push(line);
+  });
+  flush("end");
+  return blocks;
+}
+
+// Inline **bold** only.
+function inline(s: string): React.ReactNode[] {
+  return s.split(/(\*\*[^*]+\*\*)/g).filter(Boolean).map((part, i) =>
+    part.startsWith("**") && part.endsWith("**")
+      ? <strong key={i}>{part.slice(2, -2)}</strong>
+      : <span key={i}>{part}</span>,
+  );
 }
 
 // The /x section reuses the home page's cluster rendering (ClusterCard +
@@ -16,7 +54,7 @@ interface Props {
 // strip, no subscribe/onboarding flows — just the tweet clusters + solo tweets,
 // already ranked server-side. Detail opens inline (ClusterDetail) rather than a
 // route, since x_topics live in their own tables and have no /topic/[slug] page.
-export function XPage({ clusters }: Props) {
+export function XPage({ clusters, brief }: Props) {
   const [dark, setDark] = useState(true);
   const [detailId, setDetailId] = useState<string | null>(null);
   const scrollY = useScrollY();
@@ -70,6 +108,12 @@ export function XPage({ clusters }: Props) {
                 </div>
               </div>
             </header>
+
+            {brief && (
+              <section className="x-brief" aria-label="On X today">
+                {renderBrief(brief)}
+              </section>
+            )}
 
             {clusters.length === 0 ? (
               <div className="empty">

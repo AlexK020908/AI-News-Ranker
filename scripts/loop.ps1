@@ -44,6 +44,12 @@
       Write-Host " clusters=$($cx.clusters) labeled=$($cx.labeled) reused=$($cx.reused)"
     } else { Write-Host "" }
 
+    Write-Host "[$ts] x-brief..." -NoNewline
+    $xb = Hit "/api/jobs/x-brief"
+    if ($xb) {
+      if ($xb.skipped) { Write-Host " skipped" } else { Write-Host " generated posts=$($xb.posts)" }
+    } else { Write-Host "" }
+
     Write-Host "[$ts] notify..." -NoNewline
     $nf = Hit "/api/jobs/notify"
     if ($nf) {
