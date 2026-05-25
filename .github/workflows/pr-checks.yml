@@ -1,0 +1,29 @@
+# Pull-request validation — runs on GitHub-HOSTED runners (ephemeral, isolated,
+# no secrets, no access to the prod box). Safe to run on fork PRs in a public
+# repo. The self-hosted deploy lives in ci.yml and is push-only.
+#
+# Scope is deliberately lint + typecheck: neither needs secrets or a live
+# Supabase. The full `next build` is exercised by the real deploy on push.
+name: PR checks
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+        env:
+          # Browsers aren't needed to lint/typecheck; skip the ~170MB download.
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+      - run: npm run lint
+      - run: npx tsc --noEmit
