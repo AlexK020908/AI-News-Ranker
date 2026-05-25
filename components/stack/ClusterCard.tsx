@@ -13,6 +13,9 @@ interface Props {
   variant?: "compact" | "row";
   onOpen: (id: string) => void;
   index?: number;
+  // Noun for a single member in the "Covered by N ___" footer. Articles are
+  // "outlet"s; on the /x section members are individual posts, so "tweet".
+  unit?: string;
 }
 
 interface HoverState {
@@ -21,7 +24,7 @@ interface HoverState {
   y: number;
 }
 
-export function ClusterCard({ cluster, variant, onOpen, index }: Props) {
+export function ClusterCard({ cluster, variant, onOpen, index, unit = "outlet" }: Props) {
   const [expanded, setExpanded] = useState(false);
   const [hover, setHover] = useState<HoverState | null>(null);
   const topic = STACK_TOPICS.find((t) => t.id === cluster.topic);
@@ -110,7 +113,7 @@ export function ClusterCard({ cluster, variant, onOpen, index }: Props) {
           ))}
         </div>
         <div className="cluster__count">
-          Covered by <b>{cluster.sources.length}</b> {plural(cluster.sources.length, "outlet")}
+          Covered by <b>{cluster.sources.length}</b> {plural(cluster.sources.length, unit)}
         </div>
         <span className="cluster__head__sep">·</span>
         <div className="cluster__readtime">{cluster.readMin} min read</div>

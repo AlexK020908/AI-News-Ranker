@@ -163,6 +163,11 @@ export async function GET(req: NextRequest) {
             match_threshold: DEDUP_THRESHOLD,
             match_count: 1,
             since_hours: DEDUP_WINDOW_HOURS,
+            // Dedup only within the item's own surface: tweets dedup against
+            // tweets, articles against articles. Cross-surface matches would
+            // hide an article behind a tweet (or vice versa), breaking the /x
+            // isolation guarantee.
+            restrict_twitter: r.source.kind === "twitter",
           });
           const match = (matches as { id: string }[] | null)?.[0];
           if (match && match.id !== r.id) update.duplicate_of = match.id;

@@ -7,6 +7,7 @@ import { hackernewsAdapter } from "./hackernews";
 import { huggingfaceModelsAdapter, huggingfaceDatasetsAdapter } from "./huggingface";
 import { hfPapersAdapter } from "./hf-papers";
 import { crawlerAdapter } from "./crawler";
+import { twitterAdapter } from "./twitter";
 
 export const adapters: Partial<Record<SourceKind, Adapter>> = {
   rss: rssAdapter,
@@ -18,4 +19,5 @@ export const adapters: Partial<Record<SourceKind, Adapter>> = {
   huggingface_datasets: huggingfaceDatasetsAdapter,
   huggingface_papers: hfPapersAdapter,
   crawler: crawlerAdapter,
+  twitter: twitterAdapter,
 };

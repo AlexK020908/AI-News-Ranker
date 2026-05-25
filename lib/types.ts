@@ -43,6 +43,7 @@ export const SOURCE_KINDS = [
   "huggingface_datasets",
   "huggingface_papers",
   "crawler",
+  "twitter",
   "custom",
 ] as const;
 

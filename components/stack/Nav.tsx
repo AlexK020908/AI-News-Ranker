@@ -40,6 +40,7 @@ export function Nav({
   const pathname = usePathname();
   const isHome = pathname === "/";
   const isRepos = pathname === "/repos";
+  const isX = pathname === "/x";
 
   return (
     <nav className={`nav${scrolled ? " scrolled" : ""}`}>
@@ -88,9 +89,18 @@ export function Nav({
           })}
         </div>
 
-        {/* Repos link lives outside the scrollable pill rail so the mask
-            gradient never clips it. Visually accented with the nav__link
-            style to mark it as a destination, not a filter. */}
+        {/* Destinations (not filters) live outside the scrollable pill rail so
+            the mask gradient never clips them. */}
+        <Link
+          href="/x"
+          className={`nav__link${isX ? " is-active" : ""}`}
+          aria-current={isX ? "page" : undefined}
+        >
+          <svg width="13" height="13" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+            <path d="M1 1l5.2 6.6L1.3 13H2.6l4.3-4.7L10.5 13H13L7.5 6.1 12.7 1h-1.3L7.4 5.4 4 1H1z" fill="currentColor" />
+          </svg>
+          X
+        </Link>
         <Link
           href="/repos"
           className={`nav__link${isRepos ? " is-active" : ""}`}

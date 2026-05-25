@@ -415,6 +415,60 @@ on conflict (slug) do update set
   poll_interval_sec = excluded.poll_interval_sec,
   enabled           = true;
 
+-- ============== X / Twitter accounts (twitterapi.io) ==============
+-- Curated AI accounts for the dedicated /x section. Ingested via
+-- lib/ingest/twitter.ts through twitterapi.io (no official X API, no cookie
+-- session). These rows sit enabled, but the adapter no-ops cleanly until
+-- TWITTERAPI_IO_KEY is set in the environment — so seeding them early is safe.
+--
+-- COST: twitterapi.io bills per tweet returned (~$0.15 / 1k) and the endpoint
+-- has no since_id, so every poll re-fetches the latest ~20 tweets. The only
+-- cost dial is poll_interval_sec below:
+--   labs        @ 3600s (hourly)  — they post rarely; freshness matters
+--   everyone    @ 7200s (2h)      — researchers/practitioners/news post a lot
+-- ~28 accounts at this cadence ≈ 28×(24+13.5)×20 ≈ 21k tweets/day ≈ $95/mo.
+-- Widen the 7200s tier to 10800s (3h) to roughly halve that. Tune freely.
+insert into sources (slug, name, kind, region, config, poll_interval_sec) values
+-- Labs / first-party (hourly)
+('x-openai',        'OpenAI (X)',            'twitter', 'global', '{"userName":"OpenAI"}',          3600),
+('x-anthropic',     'Anthropic (X)',         'twitter', 'global', '{"userName":"AnthropicAI"}',     3600),
+('x-deepmind',      'Google DeepMind (X)',   'twitter', 'global', '{"userName":"GoogleDeepMind"}',  3600),
+('x-meta-ai',       'Meta AI (X)',           'twitter', 'global', '{"userName":"AIatMeta"}',        3600),
+('x-mistral',       'Mistral AI (X)',        'twitter', 'global', '{"userName":"MistralAI"}',       3600),
+('x-xai',           'xAI (X)',               'twitter', 'global', '{"userName":"xai"}',             3600),
+('x-nvidia-ai',     'NVIDIA AI (X)',         'twitter', 'global', '{"userName":"NVIDIAAI"}',        3600),
+-- Researchers / builders (2h)
+('x-karpathy',      'Andrej Karpathy (X)',   'twitter', 'global', '{"userName":"karpathy"}',        7200),
+('x-ylecun',        'Yann LeCun (X)',        'twitter', 'global', '{"userName":"ylecun"}',          7200),
+('x-jeffdean',      'Jeff Dean (X)',         'twitter', 'global', '{"userName":"JeffDean"}',        7200),
+('x-demishassabis', 'Demis Hassabis (X)',    'twitter', 'global', '{"userName":"demishassabis"}',   7200),
+('x-sama',          'Sam Altman (X)',        'twitter', 'global', '{"userName":"sama"}',            7200),
+('x-gdb',           'Greg Brockman (X)',     'twitter', 'global', '{"userName":"gdb"}',             7200),
+('x-carmack',       'John Carmack (X)',      'twitter', 'global', '{"userName":"ID_AA_Carmack"}',   7200),
+('x-soumith',       'Soumith Chintala (X)',  'twitter', 'global', '{"userName":"soumithchintala"}', 7200),
+('x-jasonwei',      'Jason Wei (X)',         'twitter', 'global', '{"userName":"_jasonwei"}',       7200),
+('x-drjimfan',      'Jim Fan (X)',           'twitter', 'global', '{"userName":"DrJimFan"}',        7200),
+-- Practitioners / fast signal (2h)
+('x-swyx',          'swyx (X)',              'twitter', 'global', '{"userName":"swyx"}',            7200),
+('x-simonw',        'Simon Willison (X)',    'twitter', 'global', '{"userName":"simonw"}',          7200),
+('x-emollick',      'Ethan Mollick (X)',     'twitter', 'global', '{"userName":"emollick"}',        7200),
+('x-hardmaru',      'hardmaru (X)',          'twitter', 'global', '{"userName":"hardmaru"}',        7200),
+('x-teknium',       'Teknium (X)',           'twitter', 'global', '{"userName":"Teknium1"}',        7200),
+('x-abacaj',        'Anton Bacaj (X)',       'twitter', 'global', '{"userName":"abacaj"}',          7200),
+('x-rasbt',         'Sebastian Raschka (X)', 'twitter', 'global', '{"userName":"rasbt"}',           7200),
+-- News / aggregators (2h)
+('x-rowancheung',   'Rowan Cheung (X)',      'twitter', 'global', '{"userName":"rowancheung"}',     7200),
+('x-therundownai',  'The Rundown AI (X)',    'twitter', 'global', '{"userName":"TheRundownAI"}',    7200),
+('x-bensbites',     'Ben''s Bites (X)',      'twitter', 'global', '{"userName":"bensbites"}',       7200),
+('x-minchoi',       'Min Choi (X)',          'twitter', 'global', '{"userName":"minchoi"}',         7200)
+on conflict (slug) do update set
+  name              = excluded.name,
+  kind              = excluded.kind,
+  config            = excluded.config,
+  region            = excluded.region,
+  poll_interval_sec = excluded.poll_interval_sec,
+  enabled           = true;
+
 -- ============== Crawler config relocation ==============
 -- The single INSERT above stashes crawler JSON in `config` for compactness,
 -- but the crawler adapter (lib/ingest/crawler.ts) reads from `crawl_config`.
@@ -533,4 +587,20 @@ update sources set reputation_weight = 0.8 where slug in (
   'thenextweb', '9to5google', 'searchengineland', 'testingcatalog',
   -- 2026-05-24: design-tool blog, AI-adjacent.
   'figma-blog'
+);
+
+-- X / Twitter accounts. reputation_weight has little effect on the /x surface
+-- (tweet ranking uses enrich importance, not source weight), but we set sane
+-- tiers for consistency: first-party labs + senior researchers at 1.4, working
+-- practitioners at 1.2, news aggregators at 0.8.
+update sources set reputation_weight = 1.4 where slug in (
+  'x-openai', 'x-anthropic', 'x-deepmind', 'x-meta-ai', 'x-mistral', 'x-xai',
+  'x-nvidia-ai', 'x-karpathy', 'x-ylecun', 'x-jeffdean', 'x-demishassabis',
+  'x-sama', 'x-gdb', 'x-carmack', 'x-soumith', 'x-jasonwei', 'x-drjimfan'
+);
+update sources set reputation_weight = 1.2 where slug in (
+  'x-swyx', 'x-simonw', 'x-emollick', 'x-hardmaru', 'x-teknium', 'x-abacaj', 'x-rasbt'
+);
+update sources set reputation_weight = 0.8 where slug in (
+  'x-rowancheung', 'x-therundownai', 'x-bensbites', 'x-minchoi'
 );

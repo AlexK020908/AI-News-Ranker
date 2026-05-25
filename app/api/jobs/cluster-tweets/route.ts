@@ -11,50 +11,38 @@ import {
 } from "@/lib/topics/cluster";
 import { labelCluster, slugify } from "@/lib/topics/label";
 import { runPool } from "@/lib/utils";
-import { twitterSourceIds, pgInList } from "@/lib/twitter-sources";
+import { twitterSourceIds } from "@/lib/twitter-sources";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
 export const dynamic = "force-dynamic";
 
-const WINDOW_HOURS = 48;
-// 0.72 catches loose thematic groupings — multi-outlet coverage of the same
-// story typically embeds at 0.80+, but related stories on the same topic
-// (different OpenAI announcements in the same week, etc.) sit around 0.72-0.80.
-// Tighten back to 0.78 if clusters start collapsing unrelated stories.
-const CLUSTER_THRESHOLD = 0.72;
-// Lower threshold for a second pass restricted to paper items. arXiv
-// preprints embed each other tightly when they share subject matter
-// (diffusion ↔ diffusion, RAG ↔ RAG) at 0.62-0.70. The standard 0.72
-// threshold leaves most thematic groups uncomputed, so papers show up
-// as 50 individual cards instead of "5 diffusion papers" / "8 agent
-// papers" rollups. 0.62 is the cosine floor below which AI papers
-// cease to share a subject area at all.
-const PAPER_CLUSTER_THRESHOLD = 0.62;
-// Default cluster size floor. arXiv papers are unique research and rarely
-// receive 3+ pieces of corroborating coverage, so we use a lower floor for
-// paper-majority clusters — see PAPER_MIN_CLUSTER_SIZE below.
+// Tweet clustering for the dedicated /x section. This is the article
+// cluster-topics job's smaller sibling: same single-link embedding clustering
+// and topic-reuse machinery, but pointed at twitter items only and writing to
+// x_topics / x_topic_members so the X surface stays isolated from the feed.
 //
-// 2026-05-22: lowered from 3 → 2. The homepage row layout starves the
-// long-tail categories (news, release, discussion, announcement) of
-// clusters because most blog posts only have one outlet covering them,
-// and 3-member coverage is rare outside of frontier-lab announcements.
-// 2 still gates out random embedding noise pairs (you need both items to
-// independently land in the same 0.72 cosine bucket) but lets multi-
-// outlet news stories form clusters. Single-source items still go through
-// notable_solo_items.
-const MIN_CLUSTER_SIZE = 2;
-const PAPER_MIN_CLUSTER_SIZE = 2;
-const TOPIC_MATCH_THRESHOLD = 0.85;
-const STALE_HOURS = 72;
-const LABEL_CONCURRENCY = 3;
-// Only match against topics recent enough to plausibly still exist after this
-// run's prune — bounds the centroid fetch to O(hours) rows instead of all-time.
-const MATCH_WINDOW_HOURS = STALE_HOURS * 2;
-const MAX_EXISTING_TOPICS = 500;
+// Differences from cluster-topics, all driven by tweets being short + fast:
+//   * Shorter window (tweets go stale within a day or two).
+//   * Lower similarity threshold — tweet embeddings sit lower than article
+//     embeddings for the same story because there's less shared text.
+//   * Single pass (no paper-thematic second pass; there are no papers here).
 
-// Trending score for a topic. Mirrors the per-item formula but operates on the
-// cluster aggregate so big-and-important topics outrank big-but-noisy ones.
+const WINDOW_HOURS = 36;
+// Tweets about the same event embed looser than articles (short text, more
+// stylistic variance), so 0.70 vs the article job's 0.72. Raise toward 0.74 if
+// unrelated tweets start collapsing together; lower toward 0.66 if obviously
+// related takes don't group.
+const CLUSTER_THRESHOLD = 0.7;
+const MIN_CLUSTER_SIZE = 2;
+const TOPIC_MATCH_THRESHOLD = 0.85;
+// Tweets age out faster than articles — a 2-day-old "what X is talking about"
+// cluster is already stale. Solo tweets keep showing via x_solo_tweets.
+const STALE_HOURS = 48;
+const LABEL_CONCURRENCY = 3;
+const MATCH_WINDOW_HOURS = STALE_HOURS * 2;
+const MAX_EXISTING_TOPICS = 400;
+
 function topicTrending(c: Cluster, ageHours: number): number {
   const impact = c.avg_importance * Math.sqrt(c.member_count);
   return impact / Math.pow(Math.max(0, ageHours) + 2, 1.1);
@@ -65,12 +53,8 @@ interface ItemRow {
   title: string;
   summary: string | null;
   importance: number | null;
-  category: string | null;
   published_at: string | null;
   ingested_at: string;
-  // pgvector columns come back from the Supabase JS client as their text
-  // serialization ('[0.01,0.02,...]'), not as a JS array. parseVector() below
-  // accepts either form so the cluster math works regardless.
   embedding: number[] | string | null;
 }
 
@@ -79,8 +63,6 @@ interface ExistingTopic {
   slug: string;
   label: string;
   summary: string | null;
-  // Always a parsed array (or null) by the time this type is consumed;
-  // the raw row is normalized through parseVector() at load time.
   centroid: number[] | null;
   member_hash: string | null;
 }
@@ -114,32 +96,32 @@ export async function GET(req: NextRequest) {
     return Response.json({ error: (e as Error).message }, { status: 500 });
   }
 
-  const since = new Date(Date.now() - WINDOW_HOURS * 3600 * 1000).toISOString();
-  // Tweets are clustered separately by /api/jobs/cluster-tweets into x_topics —
-  // keep them out of the article topics entirely so an X post can never land in
-  // a feed cluster (the /x section is isolated by design). Fail CLOSED: if the
-  // source lookup errors we abort rather than cluster everything (which would
-  // leak tweets into the feed).
-  let excludeTwitter: string | null;
+  let twitterIds: string[];
   try {
-    excludeTwitter = pgInList(await twitterSourceIds(supabase));
+    twitterIds = await twitterSourceIds(supabase);
   } catch (e) {
     return Response.json({ error: (e as Error).message }, { status: 500 });
   }
-  let itemsQuery = supabase
+  // No twitter sources configured (or none yet ingested) — nothing to cluster.
+  // Still prune so a freshly-emptied surface doesn't keep stale topics around.
+  if (twitterIds.length === 0) {
+    const pruned = await pruneStaleTopics(supabase);
+    return Response.json({ ok: true, items: 0, clusters: 0, pruned, durationMs: Date.now() - started });
+  }
+
+  const since = new Date(Date.now() - WINDOW_HOURS * 3600 * 1000).toISOString();
+  const { data: itemRows, error: iErr } = await supabase
     .from("items")
-    .select("id, title, summary, importance, category, published_at, ingested_at, embedding")
+    .select("id, title, summary, importance, published_at, ingested_at, embedding")
     .not("enriched_at", "is", null)
     .is("duplicate_of", null)
     .not("embedding", "is", null)
     .gte("enriched_at", since)
+    .in("source_id", twitterIds)
     .limit(3000);
-  if (excludeTwitter) itemsQuery = itemsQuery.not("source_id", "in", excludeTwitter);
-  const { data: itemRows, error: iErr } = await itemsQuery;
 
   if (iErr) return Response.json({ error: iErr.message }, { status: 500 });
   const items = (itemRows ?? []) as ItemRow[];
-  const categoryById = new Map(items.map((it) => [it.id, it.category] as const));
 
   const clusterInputs = items
     .map((it) => {
@@ -149,90 +131,36 @@ export async function GET(req: NextRequest) {
     })
     .filter((x): x is { id: string; embedding: number[]; importance: number | null } => x !== null);
 
-  // Pass 1 — tight clustering across ALL items at 0.72. Catches same-story
-  // multi-outlet coverage regardless of category.
-  const rawClusters = clusterByEmbedding(clusterInputs, {
+  const clusters = clusterByEmbedding(clusterInputs, {
     threshold: CLUSTER_THRESHOLD,
-    min_size: PAPER_MIN_CLUSTER_SIZE,
+    min_size: MIN_CLUSTER_SIZE,
   });
-
-  // Pass 2 — loose THEMATIC clustering over papers only, at 0.62. Catches
-  // subject-area groupings (all diffusion papers, all RAG papers, etc.).
-  // Restricted to papers because the looser threshold over mixed categories
-  // would collapse unrelated news stories.
-  const paperInputs = clusterInputs.filter(
-    (x) => categoryById.get(x.id) === "paper",
-  );
-  const paperThematicClusters = clusterByEmbedding(paperInputs, {
-    threshold: PAPER_CLUSTER_THRESHOLD,
-    min_size: 3, // require 3+ to mark something as a real theme
-  });
-
-  // Merge: prefer the tighter pass-1 cluster when an item appears in both.
-  // A paper that's part of a same-story pass-1 group (rare but possible)
-  // shouldn't get re-bucketed into the broader theme.
-  const claimedByPass1 = new Set<string>();
-  for (const c of rawClusters) {
-    for (const id of c.member_ids) claimedByPass1.add(id);
-  }
-  const thematicSurvivors = paperThematicClusters
-    .map((c) => ({
-      ...c,
-      member_ids: c.member_ids.filter((id) => !claimedByPass1.has(id)),
-    }))
-    .filter((c) => c.member_ids.length >= 3)
-    .map((c) => ({ ...c, member_count: c.member_ids.length }));
-
-  // Per-category gate on pass-1: papers ship at 2 members, everything else
-  // needs MIN_CLUSTER_SIZE. Pass-2 thematic clusters already required 3+
-  // above and bypass this gate.
-  const pass1Filtered = rawClusters.filter((c) => {
-    if (c.member_count >= MIN_CLUSTER_SIZE) return true;
-    const counts = new Map<string, number>();
-    for (const id of c.member_ids) {
-      const cat = categoryById.get(id) ?? "other";
-      counts.set(cat, (counts.get(cat) ?? 0) + 1);
-    }
-    let topCat = "other";
-    let topN = 0;
-    for (const [cat, n] of counts) {
-      if (n > topN) { topCat = cat; topN = n; }
-    }
-    return topCat === "paper" && c.member_count >= PAPER_MIN_CLUSTER_SIZE;
-  });
-  const clusters = [...pass1Filtered, ...thematicSurvivors];
 
   if (clusters.length === 0) {
-    await pruneStaleTopics(supabase);
+    const pruned = await pruneStaleTopics(supabase);
     return Response.json({
       ok: true,
       items: items.length,
       clusters: 0,
+      pruned,
       durationMs: Date.now() - started,
     });
   }
 
   const itemById = new Map(items.map((it) => [it.id, it] as const));
 
-  const matchSince = new Date(
-    Date.now() - MATCH_WINDOW_HOURS * 3600 * 1000,
-  ).toISOString();
+  const matchSince = new Date(Date.now() - MATCH_WINDOW_HOURS * 3600 * 1000).toISOString();
   const { data: existingRows, error: eErr } = await supabase
-    .from("topics")
+    .from("x_topics")
     .select("id, slug, label, summary, centroid, member_hash")
     .gte("last_updated_at", matchSince)
     .order("last_updated_at", { ascending: false })
     .limit(MAX_EXISTING_TOPICS);
   if (eErr) return Response.json({ error: eErr.message }, { status: 500 });
-  // Parse the centroid text serialization into actual arrays once, here, so
-  // downstream code (bestTopicMatch + cosineSimilarityWithNorm) doesn't have
-  // to re-handle the pgvector → string quirk.
   const existing: ExistingTopic[] = (existingRows ?? []).map((t) => ({
     ...(t as ExistingTopic),
     centroid: parseVector((t as ExistingTopic).centroid),
   }));
-  // Precompute centroid norms once — bestTopicMatch runs per cluster and each
-  // cosineSimilarity call would otherwise re-norm the same topic vectors.
   const existingNorms = existing.map((t) =>
     Array.isArray(t.centroid) && t.centroid.length > 0 ? vectorNorm(t.centroid) : 0,
   );
@@ -240,7 +168,6 @@ export async function GET(req: NextRequest) {
   let labeled = 0;
   let reused = 0;
   let skipped = 0;
-  const touchedIds: string[] = [];
 
   await runPool(clusters, LABEL_CONCURRENCY, async (cluster) => {
     const hash = memberHash(cluster.member_ids);
@@ -254,12 +181,11 @@ export async function GET(req: NextRequest) {
     const ageHours = mostRecent > 0 ? (Date.now() - mostRecent) / 3_600_000 : 0;
     const trending = topicTrending(cluster, ageHours);
 
-    // Fast path: membership and centroid both match — only the ranking/stats
-    // need refreshing. Skip centroid/member_hash/members rewrite so Realtime
-    // subscribers don't see an update for a topic that hasn't actually changed.
+    // Fast path: identical membership + centroid match — refresh stats only,
+    // skipping the Claude label call (the real per-tick cost).
     if (match && match.member_hash === hash && match.label) {
       const { error } = await supabase
-        .from("topics")
+        .from("x_topics")
         .update({
           member_count: cluster.member_count,
           avg_importance: round2(cluster.avg_importance),
@@ -269,11 +195,10 @@ export async function GET(req: NextRequest) {
         })
         .eq("id", match.id);
       if (error) {
-        console.error("topic stats update failed:", error.message);
+        console.error("x_topic stats update failed:", error.message);
         return;
       }
       reused++;
-      touchedIds.push(match.id);
       return;
     }
 
@@ -282,8 +207,7 @@ export async function GET(req: NextRequest) {
     let summary: string | null;
     let slug: string;
 
-    const canReuseLabel =
-      match && match.label && isTightEnoughToReuse(cluster);
+    const canReuseLabel = match && match.label && cluster.avg_similarity >= 0.75;
     if (canReuseLabel && match) {
       label = match.label;
       summary = match.summary;
@@ -316,39 +240,31 @@ export async function GET(req: NextRequest) {
 
     let persistedId: string;
     if (topicId) {
-      const { error } = await supabase.from("topics").update(topicRow).eq("id", topicId);
+      const { error } = await supabase.from("x_topics").update(topicRow).eq("id", topicId);
       if (error) {
-        console.error("topic update failed:", error.message);
+        console.error("x_topic update failed:", error.message);
         return;
       }
       persistedId = topicId;
     } else {
       const { data, error } = await supabase
-        .from("topics")
+        .from("x_topics")
         .insert(topicRow)
         .select("id")
         .single();
       if (error || !data) {
-        console.error("topic insert failed:", error?.message);
+        console.error("x_topic insert failed:", error?.message);
         return;
       }
       persistedId = data.id;
     }
 
-    // Delete-then-insert is not atomic — a realtime subscriber could briefly
-    // see an empty member list. Acceptable: the next render already picks up
-    // the old topics row's stats, and this runs hourly.
-    await supabase.from("topic_members").delete().eq("topic_id", persistedId);
-    const memberRows = cluster.member_ids.map((id) => ({
-      topic_id: persistedId,
-      item_id: id,
-    }));
+    await supabase.from("x_topic_members").delete().eq("topic_id", persistedId);
+    const memberRows = cluster.member_ids.map((id) => ({ topic_id: persistedId, item_id: id }));
     if (memberRows.length > 0) {
-      const { error: mErr } = await supabase.from("topic_members").insert(memberRows);
-      if (mErr) console.error("member insert failed:", mErr.message);
+      const { error: mErr } = await supabase.from("x_topic_members").insert(memberRows);
+      if (mErr) console.error("x_topic member insert failed:", mErr.message);
     }
-
-    touchedIds.push(persistedId);
   });
 
   const pruned = await pruneStaleTopics(supabase);
@@ -389,10 +305,6 @@ function bestTopicMatch(
   return best;
 }
 
-function isTightEnoughToReuse(c: Cluster): boolean {
-  return c.avg_similarity >= 0.75;
-}
-
 async function labelClusterSafe(
   cluster: Cluster,
   itemById: ReadonlyMap<string, ItemRow>,
@@ -410,7 +322,7 @@ async function labelClusterSafe(
   try {
     return await labelCluster({ titles, summaries });
   } catch (e) {
-    console.error("labelCluster failed:", (e as Error).message);
+    console.error("labelCluster (tweets) failed:", (e as Error).message);
     return null;
   }
 }
@@ -420,11 +332,11 @@ async function uniqueSlug(
   base: string,
   selfTopicId: string | null,
 ): Promise<string> {
-  const fallback = base || `topic-${Math.random().toString(36).slice(2, 8)}`;
+  const fallback = base || `x-topic-${Math.random().toString(36).slice(2, 8)}`;
   for (let i = 0; i < 6; i++) {
     const candidate = i === 0 ? fallback : `${fallback}-${i + 1}`;
     const { data } = await supabase
-      .from("topics")
+      .from("x_topics")
       .select("id")
       .eq("slug", candidate)
       .maybeSingle();
@@ -436,12 +348,12 @@ async function uniqueSlug(
 async function pruneStaleTopics(supabase: SupabaseClient): Promise<number> {
   const cutoff = new Date(Date.now() - STALE_HOURS * 3600 * 1000).toISOString();
   const { data, error } = await supabase
-    .from("topics")
+    .from("x_topics")
     .delete()
     .lt("last_updated_at", cutoff)
     .select("id");
   if (error) {
-    console.error("pruneStaleTopics:", error.message);
+    console.error("pruneStaleTopics (x):", error.message);
     return 0;
   }
   return data?.length ?? 0;

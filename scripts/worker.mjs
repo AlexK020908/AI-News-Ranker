@@ -45,6 +45,10 @@ const ENDPOINTS = [
   // AND risk overlapping next-tick work.
   { name: "enrich-caveman", path: "/api/jobs/enrich?backfill_caveman=1&limit=25", timeoutMs: 300_000 },
   { name: "cluster-topics", path: "/api/jobs/cluster-topics", timeoutMs: 240_000 },
+  // Tweet clustering for the dedicated /x section. Writes x_topics, isolated
+  // from the article topics above. Cheap relative to cluster-topics (far fewer
+  // items) and safe to run every tick — unchanged clusters skip re-labeling.
+  { name: "cluster-tweets", path: "/api/jobs/cluster-tweets", timeoutMs: 120_000 },
   { name: "notify",         path: "/api/jobs/notify",         timeoutMs: 60_000  },
   { name: "digest",         path: "/api/jobs/digest",         timeoutMs: 120_000 },
 ];

@@ -38,6 +38,12 @@
       Write-Host " clusters=$($cl.clusters) labeled=$($cl.labeled) reused=$($cl.reused)"
     } else { Write-Host "" }
 
+    Write-Host "[$ts] cluster-tweets..." -NoNewline
+    $cx = Hit "/api/jobs/cluster-tweets"
+    if ($cx) {
+      Write-Host " clusters=$($cx.clusters) labeled=$($cx.labeled) reused=$($cx.reused)"
+    } else { Write-Host "" }
+
     Write-Host "[$ts] notify..." -NoNewline
     $nf = Hit "/api/jobs/notify"
     if ($nf) {
