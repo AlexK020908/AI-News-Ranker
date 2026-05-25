@@ -59,6 +59,16 @@ jobs:
           S3_PUBLIC_BASE_URL=${{ secrets.S3_PUBLIC_BASE_URL }}
           WORKER_TARGET=${{ secrets.WORKER_TARGET }}
           WORKER_INTERVAL_SEC=${{ secrets.WORKER_INTERVAL_SEC }}
+          # Playwright crawler (lib/ingest/crawler.ts): the Chromium binary is
+          # host-installed at this path (the standalone bundle never ships it).
+          # Literal, not a secret. Without this line every deploy rewrites .env
+          # without it and Playwright sources can't find the browser.
+          PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright
+          # Email sending via Resend (lib/email.ts). Add RESEND_API_KEY as a
+          # repo secret; EMAIL_FROM must be an address on a Resend-verified
+          # domain (defaults to noreply@stackbrief.tech in code if unset).
+          RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}
+          EMAIL_FROM=StackBrief <noreply@stackbrief.tech>
           EOF
 
   app:
