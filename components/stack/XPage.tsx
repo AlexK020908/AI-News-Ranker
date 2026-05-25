@@ -1,17 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { StackCluster } from "@/lib/stack/types";
 import type { XBriefCitation } from "@/lib/x";
 import { useScrollY } from "@/lib/stack/hooks";
 import { Nav } from "./Nav";
-import { ClusterCard } from "./ClusterCard";
-import { ClusterDetail } from "./ClusterDetail";
 
 type Citations = Record<string, XBriefCitation> | null | undefined;
 
 interface Props {
-  clusters: StackCluster[];
   brief?: string | null;
   citations?: Citations;
 }
@@ -114,14 +110,14 @@ function inline(s: string, citations: Citations): React.ReactNode[] {
   });
 }
 
-// The /x section reuses the home page's cluster rendering (ClusterCard +
-// ClusterDetail) but is intentionally simpler: no category pills, no rising
-// strip, no subscribe/onboarding flows — just the tweet clusters + solo tweets,
-// already ranked server-side. Detail opens inline (ClusterDetail) rather than a
-// route, since x_topics live in their own tables and have no /topic/[slug] page.
-export function XPage({ clusters, brief, citations }: Props) {
+// The /x section is just the "On X today" brief — an AI synthesis of the day's
+// AI-Twitter conversation with inline citation chips ([n]) that link straight to
+// the source post(s) on X. No cluster grid / drill-down: the brief is the page,
+// and the citations are the way into the underlying tweets. (The cluster data
+// still exists server-side — it's what the brief is built from — but isn't
+// rendered here.)
+export function XPage({ brief, citations }: Props) {
   const [dark, setDark] = useState(true);
-  const [detailId, setDetailId] = useState<string | null>(null);
   const scrollY = useScrollY();
 
   useEffect(() => {
@@ -133,13 +129,6 @@ export function XPage({ clusters, brief, citations }: Props) {
     : 1;
   const progress = Math.min(100, (scrollY / docMax) * 100);
   const showToTop = scrollY > 600;
-
-  const detail = detailId ? clusters.find((c) => c.id === detailId) : null;
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    window.scrollTo({ top: 0, behavior: "instant" });
-  }, [detailId]);
 
   return (
     <>
@@ -155,52 +144,14 @@ export function XPage({ clusters, brief, citations }: Props) {
       />
 
       <main className="shell">
-        {detail ? (
-          <ClusterDetail cluster={detail} onBack={() => setDetailId(null)} />
+        {brief ? (
+          <section className="x-brief" aria-label="On X today">
+            {renderBrief(brief, citations)}
+          </section>
         ) : (
-          <>
-            <header className="briefing">
-              <div>
-                <h1 className="briefing__greet">On X</h1>
-                <div className="briefing__meta">
-                  <span>What AI X is talking about — related posts grouped, newest first.</span>
-                </div>
-              </div>
-              <div className="briefing__stats">
-                <div>
-                  <b>{clusters.length}</b>
-                  <span>threads</span>
-                </div>
-              </div>
-            </header>
-
-            {brief && (
-              <section className="x-brief" aria-label="On X today">
-                {renderBrief(brief, citations)}
-              </section>
-            )}
-
-            {clusters.length === 0 ? (
-              <div className="empty">
-                Nothing from X yet. <b>Check back soon.</b>
-              </div>
-            ) : (
-              <div className="grid" data-topic="news">
-                {clusters.map((c, i) => (
-                  <ClusterCard
-                    key={c.id}
-                    cluster={c}
-                    variant="row"
-                    onOpen={setDetailId}
-                    index={i}
-                    unit="tweet"
-                  />
-                ))}
-              </div>
-            )}
-
-            <div className="endbar">— end of the X brief —</div>
-          </>
+          <div className="empty">
+            Nothing from X yet. <b>Check back soon.</b>
+          </div>
         )}
       </main>
 
