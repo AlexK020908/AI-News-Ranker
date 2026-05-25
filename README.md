@@ -3,6 +3,45 @@
 AI-focused news aggregator that ranks, summarizes, deduplicates, and **groups
 related coverage** into story panels in real time.
 
+## How it works
+
+StackBrief turns ~130 AI sources into a deduplicated, ranked feed where each
+story appears **once** — no matter how many outlets cover it. A worker drives
+four job endpoints in sequence; the Next.js app serves the result.
+
+1. **Ingest** (`/api/jobs/ingest`) — Polls every enabled source on its own
+   cadence (`poll_interval_sec`): RSS/Atom via `rss-parser`, JS-free HTML via a
+   config-driven `cheerio` crawler (headless Chromium for SPAs), plus dedicated
+   adapters for arXiv, GitHub trending, Hacker News, and Hugging Face. New items
+   are deduped by URL and written to Postgres; anything past the retention
+   window (14 days by default) is pruned.
+
+2. **Enrich** (`/api/jobs/enrich`) — Each new item runs through Claude Haiku for
+   a summary, category, tags, and a calibrated **0–100 importance score** (papers
+   also get a plain-English explainer). A Voyage embedding lands in pgvector, and
+   near-identical items ("GPT-5 released," reported by five outlets) are collapsed
+   by cosine similarity. A thumbnail is resolved (feed media → page og:image) and
+   re-hosted on S3; arXiv items pick up citation signals from Semantic Scholar.
+
+3. **Cluster** (`/api/jobs/cluster-topics`) — Related-but-distinct items are
+   grouped into **stories** by embedding similarity and labelled by Claude. A
+   story's rank comes from cross-source corroboration, not popularity (below).
+
+4. **Surface** — The homepage reads pre-computed `story_buckets`: one panel per
+   story, with the synthesized summary and links to every source covering it.
+   Reads are served from a region-keyed Redis cache that falls through to Postgres.
+
+5. **Notify** (`/api/jobs/notify` + daily digest) — Subscribers get per-item
+   alerts or a once-a-day briefing (email via Resend, or Discord) for stories
+   above the importance threshold they chose.
+
+**Ranking = cross-source corroboration, not clicks.** A story covered by many
+independent, reputable publishers ranks higher — the same signal Techmeme and
+Google News use, and one you can't bot. The dominant term is the sum of publisher
+reputation weights on a story, plus cluster size, Claude's importance score, and
+recency decay. Views/clicks are collected for analytics but **never** feed
+ranking (see the "Camp B" rationale under [Features](#features)).
+
 ## Architecture
 
 ```
@@ -242,4 +281,4 @@ docker-compose.yml    nginx + app + worker + redis stack
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+Apache 2.0 — see [LICENSE](LICENSE). Contributions welcome — see [CONTRIBUTING.md](CONTRIBUTING.md).
