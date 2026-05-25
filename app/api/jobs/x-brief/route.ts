@@ -50,17 +50,26 @@ export async function GET(req: NextRequest) {
 
   const force = new URL(req.url).searchParams.get("force") === "1";
 
-  // Cadence guard: skip if a brief was generated within INTERVAL_HOURS.
+  // Cadence guard: skip if a brief was generated within INTERVAL_HOURS. Fail
+  // SAFE — on a read error or unparseable timestamp, skip (don't regenerate),
+  // so a transient blip or bad row can't make us re-spend on Sonnet every tick.
   if (!force) {
-    const { data: latest } = await supabase
+    const { data: latest, error: latestErr } = await supabase
       .from("briefs")
       .select("generated_at")
       .eq("surface", "x")
       .order("generated_at", { ascending: false })
       .limit(1)
       .maybeSingle();
-    if (latest && Date.now() - Date.parse(latest.generated_at) < INTERVAL_HOURS * 3600 * 1000) {
-      return Response.json({ ok: true, skipped: true, reason: "recent brief exists" });
+    if (latestErr) {
+      return Response.json({ ok: true, skipped: true, reason: `brief lookup failed: ${latestErr.message}` });
+    }
+    if (latest) {
+      const ts = Date.parse(latest.generated_at);
+      // Unparseable → treat as "recent" and skip rather than regenerate.
+      if (!Number.isFinite(ts) || Date.now() - ts < INTERVAL_HOURS * 3600 * 1000) {
+        return Response.json({ ok: true, skipped: true, reason: "recent brief exists" });
+      }
     }
   }
 
@@ -91,6 +100,11 @@ export async function GET(req: NextRequest) {
     supabase
       .from("x_topics")
       .select("label, summary, member_count")
+      // Only real, current conversations: >=2 converged posts and updated within
+      // the same window as the tweets, so an "On X today" brief isn't fed stale
+      // or single-post topics (matches the x_story_buckets member_count gate).
+      .gte("member_count", 2)
+      .gte("last_updated_at", since)
       .order("trending_score", { ascending: false })
       .limit(MAX_CLUSTERS),
   ]);
@@ -135,6 +149,12 @@ export async function GET(req: NextRequest) {
     sections = block ? JSON.parse(block) : null;
     if (!isXBriefSections(sections)) {
       return Response.json({ error: "model returned malformed sections" }, { status: 502 });
+    }
+    // Reject a contentless brief (all sections blank) — otherwise we'd insert an
+    // empty brief and the cadence guard would block regeneration for INTERVAL_HOURS,
+    // leaving /x showing empty section headers. A 502 means we retry next tick.
+    if (!sections.pulse.trim() && !sections.threads.trim() && !sections.spotted.trim()) {
+      return Response.json({ error: "model returned empty brief" }, { status: 502 });
     }
     markdown = renderXBriefMarkdown(sections, period, tweets.length);
   } catch (e) {

@@ -41,3 +41,12 @@ export function huggingfacePapersEngagement(upvotes: number, comments: number): 
   const commentBoost = Math.min(12, Math.log10(1 + comments) * 5);
   return Math.min(100, Math.round(upScore + commentBoost));
 }
+
+export function twitterEngagement(likes: number, retweets: number, replies: number): number {
+  // items.engagement_score is CHECK (0..100), so this MUST clamp — a raw
+  // likes+RT+reply sum overflows the constraint and makes the whole tweet
+  // INSERT throw. Weight reach (RTs) highest; pivot ~800 weighted ≈ score 70
+  // (a solidly-engaged AI-account tweet); viral tweets saturate near 100.
+  const raw = (Number(likes) || 0) + (Number(retweets) || 0) * 2 + (Number(replies) || 0);
+  return logNormalize(raw, 800);
+}

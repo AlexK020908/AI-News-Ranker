@@ -9,7 +9,7 @@ export interface XTweetInput {
   handle: string;        // author, e.g. "@karpathy"
   text: string;         // tweet text (already trimmed/truncated)
   importance: number | null;
-  engagement: number;   // likes + reposts + replies, coarse
+  engagement: number;   // normalized 0-100 engagement score (not raw counts)
 }
 
 export interface XClusterInput {

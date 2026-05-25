@@ -42,7 +42,7 @@ function renderBrief(markdown: string) {
 
 // Inline **bold** only.
 function inline(s: string): React.ReactNode[] {
-  return s.split(/(\*\*[^*]+\*\*)/g).filter(Boolean).map((part, i) =>
+  return s.split(/(\*\*.+?\*\*)/g).filter(Boolean).map((part, i) =>
     part.startsWith("**") && part.endsWith("**")
       ? <strong key={i}>{part.slice(2, -2)}</strong>
       : <span key={i}>{part}</span>,
