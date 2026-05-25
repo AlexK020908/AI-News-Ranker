@@ -1611,3 +1611,40 @@ button:disabled { cursor: not-allowed; }
   .onb__footer .btn-primary { flex: 1; justify-content: center; }
 }
 
+/* "On X today" synthesis brief — sits above the cluster grid on /x. Themed via
+   the same tokens as the rest of the app so light/dark both work. */
+.x-brief {
+  margin: 4px 0 28px;
+  padding: 20px 22px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  max-width: 760px;
+}
+.x-brief__h1 {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  margin: 0 0 2px;
+}
+.x-brief__meta {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 0 0 14px;
+}
+.x-brief__h2 {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin: 16px 0 6px;
+}
+.x-brief__p {
+  font-size: 14.5px;
+  line-height: 1.6;
+  color: var(--text-2);
+  margin: 0 0 10px;
+}
+.x-brief__p strong { color: var(--text); font-weight: 600; }
+

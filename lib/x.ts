@@ -1,6 +1,31 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { StoryBucket } from "@/lib/stories";
 
+export interface XBrief {
+  markdown: string;
+  generated_at: string;
+}
+
+// The "On X today" synthesis that sits atop the cluster grid. Latest row for
+// surface='x', written by /api/jobs/x-brief. Display-only: returns null on any
+// error/absence so the page falls back to the clusters alone.
+export async function loadLatestXBrief(
+  supabase: SupabaseClient,
+): Promise<XBrief | null> {
+  const { data, error } = await supabase
+    .from("briefs")
+    .select("markdown, generated_at")
+    .eq("surface", "x")
+    .order("generated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) {
+    console.warn("loadLatestXBrief:", error.message);
+    return null;
+  }
+  return data ? (data as XBrief) : null;
+}
+
 // Loader for the dedicated /x section. Returns tweet CLUSTERS ("what X is
 // talking about", linking related takes) plus notable SOLO tweets, both in the
 // story_buckets row shape so the page reuses the existing StoryBucket →

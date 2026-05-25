@@ -1,6 +1,6 @@
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getCache, ttl } from "@/lib/cache/redis";
-import { loadXBuckets } from "@/lib/x";
+import { loadXBuckets, loadLatestXBrief, type XBrief } from "@/lib/x";
 import type { StoryBucket } from "@/lib/stories";
 import { clusterFromBucket } from "@/lib/stack/transform";
 import { XPage } from "@/components/stack/XPage";
@@ -21,11 +21,18 @@ export default async function X() {
   const supabase = await createSupabaseServerClient();
   const cache = getCache();
 
-  const buckets = await cache.remember<XBucket[]>(
-    "x:buckets:v1",
-    ttl.stories,
-    () => loadXBuckets(supabase),
-  );
+  const [buckets, brief] = await Promise.all([
+    cache.remember<XBucket[]>(
+      "x:buckets:v1",
+      ttl.stories,
+      () => loadXBuckets(supabase),
+    ),
+    cache.remember<XBrief | null>(
+      "x:brief:v1",
+      ttl.stories,
+      () => loadLatestXBrief(supabase),
+    ),
+  ]);
 
   // Decorate with the engagement-count fields StoryBucket carries (always zero
   // for the X surface — tweets have no aggregated view/click counters here) so
@@ -34,5 +41,5 @@ export default async function X() {
     clusterFromBucket({ ...b, views_1h: 0, clicks_1h: 0 }),
   );
 
-  return <XPage clusters={clusters} />;
+  return <XPage clusters={clusters} brief={brief?.markdown ?? null} />;
 }

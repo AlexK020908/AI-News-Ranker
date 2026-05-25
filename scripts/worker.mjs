@@ -49,6 +49,10 @@ const ENDPOINTS = [
   // from the article topics above. Cheap relative to cluster-topics (far fewer
   // items) and safe to run every tick — unchanged clusters skip re-labeling.
   { name: "cluster-tweets", path: "/api/jobs/cluster-tweets", timeoutMs: 120_000 },
+  // "On X today" synthesis brief for the /x page. Self-rate-limited (regenerates
+  // at most every few hours), so calling it each tick is cheap — it no-ops until
+  // its interval rolls.
+  { name: "x-brief",        path: "/api/jobs/x-brief",        timeoutMs: 120_000 },
   { name: "notify",         path: "/api/jobs/notify",         timeoutMs: 60_000  },
   { name: "digest",         path: "/api/jobs/digest",         timeoutMs: 120_000 },
 ];
