@@ -460,7 +460,11 @@ insert into sources (slug, name, kind, region, config, poll_interval_sec) values
 ('x-rowancheung',   'Rowan Cheung (X)',      'twitter', 'global', '{"userName":"rowancheung"}',     7200),
 ('x-therundownai',  'The Rundown AI (X)',    'twitter', 'global', '{"userName":"TheRundownAI"}',    7200),
 ('x-bensbites',     'Ben''s Bites (X)',      'twitter', 'global', '{"userName":"bensbites"}',       7200),
-('x-minchoi',       'Min Choi (X)',          'twitter', 'global', '{"userName":"minchoi"}',         7200)
+('x-minchoi',       'Min Choi (X)',          'twitter', 'global', '{"userName":"minchoi"}',         7200),
+-- Y Combinator: batch launches / "who got in" surface through YC's own X posts,
+-- rather than a separate yc-oss adapter — same pipeline, zero extra machinery.
+('x-ycombinator',   'Y Combinator (X)',      'twitter', 'global', '{"userName":"ycombinator"}',     7200),
+('x-garrytan',      'Garry Tan (X)',         'twitter', 'global', '{"userName":"garrytan"}',        7200)
 on conflict (slug) do update set
   name              = excluded.name,
   kind              = excluded.kind,
@@ -599,7 +603,8 @@ update sources set reputation_weight = 1.4 where slug in (
   'x-sama', 'x-gdb', 'x-carmack', 'x-soumith', 'x-jasonwei', 'x-drjimfan'
 );
 update sources set reputation_weight = 1.2 where slug in (
-  'x-swyx', 'x-simonw', 'x-emollick', 'x-hardmaru', 'x-teknium', 'x-abacaj', 'x-rasbt'
+  'x-swyx', 'x-simonw', 'x-emollick', 'x-hardmaru', 'x-teknium', 'x-abacaj', 'x-rasbt',
+  'x-ycombinator', 'x-garrytan'
 );
 update sources set reputation_weight = 0.8 where slug in (
   'x-rowancheung', 'x-therundownai', 'x-bensbites', 'x-minchoi'
