@@ -1,21 +1,28 @@
 // "On X today" brief — a synthesis of the AI conversation on X/Twitter, sitting
 // on top of the /x cluster grid. Same shape as the daily digest (strict JSON
-// sections + server-rendered markdown) but tuned for social: the value is the
-// synthesis of the conversation, not individual low-signal posts.
+// sections + server-rendered markdown) but tuned for social, and with INLINE
+// CITATIONS: each source is numbered, the model cites [n] in its prose, and the
+// /x renderer turns each [n] into a chip linking to the source post(s) on X
+// (Google AI-Overview style) so the brief is self-sufficient — no drill-down.
 
 export const X_BRIEF_MODEL = "claude-sonnet-4-6";
 
-export interface XTweetInput {
-  handle: string;        // author, e.g. "@karpathy"
-  text: string;         // tweet text (already trimmed/truncated)
-  importance: number | null;
-  engagement: number;   // normalized 0-100 engagement score (not raw counts)
+// A numbered source handed to the model. `kind: "cluster"` is a group of related
+// posts (cite it when summarizing that conversation); `kind: "post"` is a single
+// standout tweet.
+export interface XSourceInput {
+  n: number;
+  kind: "cluster" | "post";
+  label: string;            // topic label, or "@handle" for a post
+  text: string;             // cluster summary, or the tweet text
+  memberCount?: number;     // posts in the cluster (cluster only)
+  engagement?: number;      // 0-100 normalized score (post only)
 }
 
-export interface XClusterInput {
-  label: string;        // x_topic label
-  summary: string | null;
-  member_count: number; // how many tweets converged here
+// What we persist + render: [n] → the post(s) to open on X.
+export interface XCitation {
+  label: string;
+  posts: { url: string; handle: string }[];
 }
 
 export interface XBriefSections {
@@ -24,50 +31,43 @@ export interface XBriefSections {
   spotted: string;
 }
 
-export const X_BRIEF_SYSTEM_PROMPT = `You are the editor of a short "On X today" briefing covering what the AI community is discussing on X/Twitter. You are given (a) clustered conversations — groups of related posts with a label and how many accounts converged on them — and (b) the day's highest-engagement individual posts.
+export const X_BRIEF_SYSTEM_PROMPT = `You are the editor of a short "On X today" briefing covering what the AI community is discussing on X/Twitter. You are given a numbered list of SOURCES: "cluster" sources (groups of related posts, with a label and how many accounts converged) and "post" sources (individual standout tweets).
 
-Synthesize the CONVERSATION, don't list tweets. The reader wants "what's everyone talking about and what's the take," not a feed dump. Attribute by handle where it sharpens the point (e.g. "@karpathy argued…"). A cluster with many accounts is a stronger signal than one viral post.
+Synthesize the CONVERSATION, don't list tweets. The reader wants "what's everyone talking about and what's the take," not a feed dump. A cluster with many accounts is a stronger signal than one viral post.
+
+CITATIONS — this is important: cite your sources INLINE using their [n] number, placed immediately after the statement it supports (e.g. "Karpathy reportedly joined Anthropic [3]." or "Several outlets covered Google's math result [1]."). Cite the cluster's number when you summarize that conversation. Only ever cite numbers that appear in SOURCES. Cite the specific source(s) behind each claim — most sentences should carry at least one [n].
 
 Output STRICT JSON, no markdown fences, no prose around the JSON. Schema:
 {
-  "pulse":   string,   // 3-6 sentences. The dominant threads of the day — what most of AI-X was reacting to. Lead with the strongest, most-converged conversation.
-  "threads": string,   // 3-6 sentences. Specific debates/discussions worth following, grouping who's on which side. These are the "there's an actual argument here" items.
-  "spotted": string    // 2-4 sentences. A few individual high-signal posts or links worth a click that didn't form a big cluster — easy to miss, worth seeing.
+  "pulse":   string,   // 3-6 sentences. The dominant threads of the day. Lead with the strongest, most-converged conversation. Cite [n].
+  "threads": string,   // 3-6 sentences. Specific debates/discussions worth following, grouping who's on which side. Cite [n].
+  "spotted": string    // 2-4 sentences. A few individual high-signal posts/links that didn't form a big cluster — easy to miss, worth seeing. Cite [n].
 }
 
 Hard rules:
 - Never invent posts, claims, handles, or numbers not in the input.
-- Never include URLs in the prose.
-- Keep each section under 900 characters. Tight beats long.
-- Plain prose, not bullet lists. Markdown bold (**...**) is fine for emphasis on a handle or topic.
-- If the input is thin (few posts, no clusters), write a short honest brief rather than padding.`;
+- Never write raw URLs in the prose — the [n] citations become the links.
+- Keep each section under 900 characters (the [n] markers are cheap, use them freely).
+- Plain prose, not bullet lists. Markdown bold (**...**) is fine for emphasis.
+- If the input is thin, write a short honest brief rather than padding.`;
 
 export function buildXBriefUserMessage(
-  clusters: XClusterInput[],
-  tweets: XTweetInput[],
+  sources: XSourceInput[],
   period: { start: string; end: string },
 ): string {
   const lines: string[] = [
     `PERIOD: ${period.start} → ${period.end}`,
-    `CLUSTERS: ${clusters.length}  POSTS: ${tweets.length}`,
+    `SOURCES: ${sources.length}`,
     "",
-    "CLUSTERED CONVERSATIONS (label — how many accounts converged):",
+    "SOURCES (cite inline as [n]):",
   ];
-  if (clusters.length === 0) {
-    lines.push("  (none yet — not enough related posts to cluster)");
-  } else {
-    clusters.forEach((c) => {
-      lines.push(
-        `  - ${c.label} [${c.member_count} posts]${c.summary ? `: ${c.summary}` : ""}`,
-      );
-    });
+  for (const s of sources) {
+    if (s.kind === "cluster") {
+      lines.push(`[${s.n}] CLUSTER "${s.label}" — ${s.memberCount ?? 0} posts: ${s.text}`);
+    } else {
+      lines.push(`[${s.n}] POST ${s.label} (eng ${s.engagement ?? 0}/100): ${s.text}`);
+    }
   }
-  lines.push("", "TOP POSTS (by engagement):", "");
-  tweets.forEach((t, idx) => {
-    lines.push(
-      `[${idx + 1}] ${t.handle} (eng=${t.engagement}, importance=${t.importance ?? 0})\n    ${t.text}`,
-    );
-  });
   lines.push("", "Return ONLY the JSON object. No other text.");
   return lines.join("\n");
 }
@@ -78,6 +78,9 @@ export function renderXBriefMarkdown(
   postCount: number,
 ): string {
   const label = formatDay(period.end);
+  // [n] markers are intentionally LEFT IN the prose — the /x renderer replaces
+  // them with citation chips. The email/markdown fallback shows them as plain
+  // "[n]" which is acceptable.
   return [
     `# On X — ${label}`,
     `*${postCount} posts reviewed*`,

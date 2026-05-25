@@ -41,5 +41,11 @@ export default async function X() {
     clusterFromBucket({ ...b, views_1h: 0, clicks_1h: 0 }),
   );
 
-  return <XPage clusters={clusters} brief={brief?.markdown ?? null} />;
+  return (
+    <XPage
+      clusters={clusters}
+      brief={brief?.markdown ?? null}
+      citations={brief?.citations ?? null}
+    />
+  );
 }
