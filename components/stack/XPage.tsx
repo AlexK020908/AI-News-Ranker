@@ -1,28 +1,87 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { StackCluster } from "@/lib/stack/types";
+import type { XBriefCitation } from "@/lib/x";
 import { useScrollY } from "@/lib/stack/hooks";
 import { Nav } from "./Nav";
 import { ClusterCard } from "./ClusterCard";
 import { ClusterDetail } from "./ClusterDetail";
 
+type Citations = Record<string, XBriefCitation> | null | undefined;
+
 interface Props {
   clusters: StackCluster[];
   brief?: string | null;
+  citations?: Citations;
+}
+
+// Inline citation chip — the Google-AI-Overview move. A [n] in the brief becomes
+// this: a single source links straight to the post on X; a cluster of N posts
+// opens a small flyout listing them, each one click to X. Falls back to a plain
+// muted "[n]" if the model cited a number we have no source for.
+function CitationChip({ n, citation }: { n: number; citation: XBriefCitation | undefined }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLSpanElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
+
+  if (!citation || citation.posts.length === 0) {
+    return <sup className="cite cite--dead">[{n}]</sup>;
+  }
+  // Single source → direct link, no flyout needed.
+  if (citation.posts.length === 1) {
+    return (
+      <sup className="cite">
+        <a href={citation.posts[0].url} target="_blank" rel="noopener noreferrer" title={`@${citation.posts[0].handle} on X`}>
+          {n}
+        </a>
+      </sup>
+    );
+  }
+  // Multiple posts → chip opens a flyout of all of them.
+  return (
+    <span className="cite cite--multi" ref={ref}>
+      <button
+        type="button"
+        className="cite__btn"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        title={`${citation.posts.length} posts on X`}
+      >
+        {n}<span className="cite__count">·{citation.posts.length}</span>
+      </button>
+      {open && (
+        <span className="cite__flyout" role="menu">
+          <span className="cite__flyout-head">{citation.label} · {citation.posts.length} posts</span>
+          {citation.posts.map((p, i) => (
+            <a key={i} href={p.url} target="_blank" rel="noopener noreferrer" className="cite__flyout-item" role="menuitem">
+              𝕏 @{p.handle}
+            </a>
+          ))}
+        </span>
+      )}
+    </span>
+  );
 }
 
 // Minimal markdown → elements for the brief: `# h1`, `## h2`, `*meta line*`,
-// blank-separated paragraphs, and inline `**bold**`. The brief prompt only ever
-// emits those, so a full markdown lib would be overkill. Themed via site CSS
-// (the .x-brief classes) rather than inline colors so light/dark both work.
-function renderBrief(markdown: string) {
+// blank-separated paragraphs, inline `**bold**`, and `[n]` citation chips.
+// Themed via site CSS (.x-brief / .cite classes) so light/dark both work.
+function renderBrief(markdown: string, citations: Citations) {
   const blocks: React.ReactNode[] = [];
   let para: string[] = [];
   const flush = (key: string) => {
     if (para.length === 0) return;
     blocks.push(
-      <p key={key} className="x-brief__p">{inline(para.join(" "))}</p>,
+      <p key={key} className="x-brief__p">{inline(para.join(" "), citations)}</p>,
     );
     para = [];
   };
@@ -40,13 +99,19 @@ function renderBrief(markdown: string) {
   return blocks;
 }
 
-// Inline **bold** only.
-function inline(s: string): React.ReactNode[] {
-  return s.split(/(\*\*.+?\*\*)/g).filter(Boolean).map((part, i) =>
-    part.startsWith("**") && part.endsWith("**")
-      ? <strong key={i}>{part.slice(2, -2)}</strong>
-      : <span key={i}>{part}</span>,
-  );
+// Inline tokenizer: **bold** and [n] citation markers.
+function inline(s: string, citations: Citations): React.ReactNode[] {
+  return s.split(/(\*\*.+?\*\*|\[\d+\])/g).filter(Boolean).map((part, i) => {
+    if (part.startsWith("**") && part.endsWith("**")) {
+      return <strong key={i}>{part.slice(2, -2)}</strong>;
+    }
+    const m = /^\[(\d+)\]$/.exec(part);
+    if (m) {
+      const n = Number(m[1]);
+      return <CitationChip key={i} n={n} citation={citations?.[String(n)]} />;
+    }
+    return <span key={i}>{part}</span>;
+  });
 }
 
 // The /x section reuses the home page's cluster rendering (ClusterCard +
@@ -54,7 +119,7 @@ function inline(s: string): React.ReactNode[] {
 // strip, no subscribe/onboarding flows — just the tweet clusters + solo tweets,
 // already ranked server-side. Detail opens inline (ClusterDetail) rather than a
 // route, since x_topics live in their own tables and have no /topic/[slug] page.
-export function XPage({ clusters, brief }: Props) {
+export function XPage({ clusters, brief, citations }: Props) {
   const [dark, setDark] = useState(true);
   const [detailId, setDetailId] = useState<string | null>(null);
   const scrollY = useScrollY();
@@ -111,7 +176,7 @@ export function XPage({ clusters, brief }: Props) {
 
             {brief && (
               <section className="x-brief" aria-label="On X today">
-                {renderBrief(brief)}
+                {renderBrief(brief, citations)}
               </section>
             )}
 

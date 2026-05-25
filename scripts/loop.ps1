@@ -47,7 +47,7 @@
     Write-Host "[$ts] x-brief..." -NoNewline
     $xb = Hit "/api/jobs/x-brief"
     if ($xb) {
-      if ($xb.skipped) { Write-Host " skipped" } else { Write-Host " generated posts=$($xb.posts)" }
+      if ($xb.skipped) { Write-Host " skipped" } else { Write-Host " generated sources=$($xb.sources)" }
     } else { Write-Host "" }
 
     Write-Host "[$ts] notify..." -NoNewline
