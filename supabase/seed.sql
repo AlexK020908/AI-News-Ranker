@@ -473,7 +473,8 @@ insert into sources (slug, name, kind, region, config, poll_interval_sec) values
 -- Y Combinator: batch launches / "who got in" surface through YC's own X posts,
 -- rather than a separate yc-oss adapter — same pipeline, zero extra machinery.
 ('x-ycombinator',   'Y Combinator (X)',      'twitter', 'global', '{"userName":"ycombinator"}',     7200),
-('x-garrytan',      'Garry Tan (X)',         'twitter', 'global', '{"userName":"garrytan"}',        7200)
+('x-garrytan',      'Garry Tan (X)',         'twitter', 'global', '{"userName":"garrytan"}',        7200),
+('x-warpdotdev',    'Warp (X)',              'twitter', 'global', '{"userName":"warpdotdev"}',      7200)
 on conflict (slug) do update set
   name              = excluded.name,
   kind              = excluded.kind,
