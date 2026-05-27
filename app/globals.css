@@ -485,7 +485,7 @@ button:disabled { cursor: not-allowed; }
    as the user scrolls horizontally). */
 .cluster[data-variant="row"] {
   width: 300px;
-  height: 440px;
+  height: 410px;
   padding: 14px;
   gap: 10px;
   grid-template-rows: auto auto 1fr auto;
@@ -493,7 +493,7 @@ button:disabled { cursor: not-allowed; }
 }
 .cluster[data-variant="row"][data-topic="paper"] {
   width: 320px;
-  height: 530px;
+  height: 500px;
 }
 .cluster[data-variant="row"] .cluster__body {
   grid-template-columns: 1fr;

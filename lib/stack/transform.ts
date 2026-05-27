@@ -5,8 +5,8 @@ import { topicForCluster } from "./topics";
 import { getStorage } from "@/lib/storage/s3";
 
 const WORDS_PER_MIN = 220;
-const SUMMARY_MAX_CHARS = 220;
-const CAVEMAN_MAX_CHARS = 280;
+const SUMMARY_MAX_CHARS = 180;
+const CAVEMAN_MAX_CHARS = 240;
 
 function truncateSentence(text: string, max: number): string {
   if (text.length <= max) return text;
