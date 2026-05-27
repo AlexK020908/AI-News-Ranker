@@ -98,6 +98,27 @@ function toHttps(src: string): string {
   return src.replace(/^http:\/\//i, "https://");
 }
 
+// Techmeme titles end with "(Author/Publisher)" or "(Publisher)".
+// Extract the real publisher name + slug and strip the suffix from the title.
+function parseTechmemeAttribution(title: string): {
+  cleanTitle: string;
+  publisherName: string | null;
+  publisherSlug: string | null;
+} {
+  const m = title.match(/\s*\(([^)]+)\)\s*$/);
+  if (!m) return { cleanTitle: title, publisherName: null, publisherSlug: null };
+  const cleanTitle = title.slice(0, m.index!).trim();
+  const parts = m[1].trim().split(/\s*\/\s*/);
+  const author = parts.length > 1 ? parts[0] : null;
+  const publisher = parts[parts.length - 1];
+  const slug = publisher
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+  const name = author ? `${publisher} (${author})` : publisher;
+  return { cleanTitle, publisherName: name, publisherSlug: slug };
+}
+
 function extractTechmemeTarget(
   html: string,
 ): { url: string; thumbnail: string | null } | null {
@@ -157,20 +178,28 @@ export const rssAdapter: Adapter = async (ctx) => {
             : stripHtml(String(rawHtml))
           ).trim();
         let finalLink = link;
+        let finalTitle = title;
         let thumbnail = extractThumbnail(it);
-        // Techmeme: <link> is a permalink page; rewrite to the real article and
-        // pull the inline thumbnail the feed doesn't expose via media:* tags.
+        let publisherName: string | null = null;
+        let publisherSlug: string | null = null;
+        // Techmeme: <link> is a permalink page; rewrite to the real article,
+        // pull the inline thumbnail, and extract the real publisher so cards
+        // credit the original outlet instead of showing "Techmeme".
         if (isTechmemeUrl(link)) {
           const tm = extractTechmemeTarget(String(rawHtml));
           if (tm) {
             finalLink = tm.url;
             if (!thumbnail) thumbnail = tm.thumbnail;
           }
+          const attr = parseTechmemeAttribution(title);
+          finalTitle = attr.cleanTitle;
+          publisherName = attr.publisherName;
+          publisherSlug = attr.publisherSlug;
         }
         const xml = serializeItemXml({
           guid: externalId,
           link: finalLink,
-          title,
+          title: finalTitle,
           pubDate: pub,
           description: snippet,
           thumbnail,
@@ -182,13 +211,17 @@ export const rssAdapter: Adapter = async (ctx) => {
         return {
           external_id: externalId,
           url: finalLink,
-          title: truncate(title, 500),
+          title: truncate(finalTitle, 500),
           author: author as string | null,
           content: snippet ? truncate(snippet, 4000) : null,
           published_at: pub ? new Date(pub).toISOString() : null,
           xml,
           thumbnail_candidate_url: thumbnail,
-          raw: { categories: Array.isArray(it.categories) ? it.categories : [] },
+          raw: {
+            categories: Array.isArray(it.categories) ? it.categories : [],
+            ...(publisherName && { publisher_name: publisherName }),
+            ...(publisherSlug && { publisher_slug: publisherSlug }),
+          },
         };
       })
       .filter((v): v is NonNullable<typeof v> => v !== null);

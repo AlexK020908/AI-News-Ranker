@@ -14,6 +14,10 @@ export interface StoryMember {
   source_slug: string;
   source_name: string;
   source_kind: SourceKind;
+  // Aggregator override: real publisher name/slug extracted during ingest
+  // (e.g. Techmeme → "Platformer (Casey Newton)" / "platformer").
+  publisher_name: string | null;
+  publisher_slug: string | null;
   // Thumbnail wiring. s3_storage_id is the durable copy (set when S3_BUCKET is
   // configured during enrich); thumb_url is the publisher's original CDN URL
   // captured during ingest. The transform layer prefers s3 when present.

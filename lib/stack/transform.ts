@@ -46,19 +46,55 @@ function resolveImageUrl(m: StoryMember): string | null {
   return defaultThumbFor(m.source_slug);
 }
 
+// Techmeme titles end with "(Author/Publisher)". For old items that pre-date
+// the ingestion fix, parse at display time so they also show the real outlet.
+function parseTrailingAttribution(title: string): {
+  cleanTitle: string;
+  publisherName: string | null;
+  publisherSlug: string | null;
+} {
+  const m = title.match(/\s*\(([^)]+)\)\s*$/);
+  if (!m) return { cleanTitle: title, publisherName: null, publisherSlug: null };
+  const cleanTitle = title.slice(0, m.index!).trim();
+  const parts = m[1].trim().split(/\s*\/\s*/);
+  const author = parts.length > 1 ? parts[0] : null;
+  const publisher = parts[parts.length - 1];
+  const slug = publisher.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  const name = author ? `${publisher} (${author})` : publisher;
+  return { cleanTitle, publisherName: name, publisherSlug: slug };
+}
+
+const AGGREGATOR_SLUGS = new Set(["techmeme"]);
+
 function memberToSource(m: StoryMember): StackSource {
-  const avatar = avatarFor(m.source_slug, m.source_name);
+  let displaySlug = m.source_slug;
+  let displayName = m.source_name;
+  let headline = m.title;
+
+  if (m.publisher_name && m.publisher_slug) {
+    displaySlug = m.publisher_slug;
+    displayName = m.publisher_name;
+  } else if (AGGREGATOR_SLUGS.has(m.source_slug)) {
+    const attr = parseTrailingAttribution(m.title);
+    if (attr.publisherName) {
+      displaySlug = attr.publisherSlug!;
+      displayName = attr.publisherName;
+      headline = attr.cleanTitle;
+    }
+  }
+
+  const avatar = avatarFor(displaySlug, displayName);
   return {
     id: m.id,
     url: m.url,
     initial: avatar.initial,
-    name: m.source_name,
+    name: displayName,
     color: avatar.color,
     text: avatar.text,
-    headline: m.title,
+    headline,
     hoursAgo: hoursAgoFrom(m.published_at),
     thumb: {
-      hue: hueFor(m.source_slug),
+      hue: hueFor(displaySlug),
       label: thumbLabel(m),
       imageUrl: resolveImageUrl(m),
     },
