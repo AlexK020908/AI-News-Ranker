@@ -5,6 +5,17 @@ import { topicForCluster } from "./topics";
 import { getStorage } from "@/lib/storage/s3";
 
 const WORDS_PER_MIN = 220;
+const SUMMARY_MAX_CHARS = 220;
+const CAVEMAN_MAX_CHARS = 280;
+
+function truncateSentence(text: string, max: number): string {
+  if (text.length <= max) return text;
+  const truncated = text.slice(0, max);
+  const lastSentence = truncated.search(/[.!?][^.!?]*$/);
+  if (lastSentence > max * 0.5) return truncated.slice(0, lastSentence + 1);
+  const lastSpace = truncated.lastIndexOf(" ");
+  return (lastSpace > max * 0.5 ? truncated.slice(0, lastSpace) : truncated) + "...";
+}
 
 function hoursAgoFrom(iso: string | null | undefined): number {
   if (!iso) return 0;
@@ -123,7 +134,8 @@ export function clusterFromBucket(b: StoryBucket, risingIds?: ReadonlySet<string
     const paperMembers = b.members
       .filter((m) => m.category === "paper" && m.caveman_summary)
       .sort((a, c) => (c.importance ?? 0) - (a.importance ?? 0));
-    cavemanSummary = paperMembers[0]?.caveman_summary ?? null;
+    const raw = paperMembers[0]?.caveman_summary ?? null;
+    cavemanSummary = raw ? truncateSentence(raw, CAVEMAN_MAX_CHARS) : null;
   }
 
   return {
@@ -131,7 +143,7 @@ export function clusterFromBucket(b: StoryBucket, risingIds?: ReadonlySet<string
     slug: b.topic_slug,
     topic,
     headline: b.topic_label,
-    summary: b.topic_summary ?? "",
+    summary: truncateSentence(b.topic_summary ?? "", SUMMARY_MAX_CHARS),
     hoursAgo: hoursAgoFrom(newestIso),
     readMin: estimateReadMin(b.topic_summary),
     breaking: (b.max_importance ?? 0) >= 92,
