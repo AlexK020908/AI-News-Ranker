@@ -972,9 +972,34 @@ button:disabled { cursor: not-allowed; }
 }
 @media (max-width: 720px) { .new-updates-pill { top: 68px; } }
 
+/* ============ Footer links ============ */
+.site-footer {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 28px;
+  margin-top: 60px;
+  padding: 0 0 4px;
+}
+.site-footer__link {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--muted);
+  text-decoration: none;
+  transition: color 0.15s;
+}
+.site-footer__link:hover { color: var(--text); }
+@media (max-width: 480px) {
+  .site-footer { gap: 18px; }
+  .site-footer__link span { display: none; }
+}
+
 /* ============ Bottom bar ============ */
 .endbar {
-  margin-top: 60px;
+  margin-top: 20px;
   padding: 28px 0;
   text-align: center;
   font-family: var(--mono);

@@ -256,6 +256,21 @@ export function StackApp({
             {topic === "repo" && trendingRepos.length > 0 && (
               <TrendingReposStrip items={trendingRepos} />
             )}
+            <footer className="site-footer">
+              <a href="mailto:business@stackbrief.tech" className="site-footer__link" aria-label="Email us">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <rect x="2" y="4" width="20" height="16" rx="3" stroke="currentColor" strokeWidth="1.6" />
+                  <path d="M2 7l10 6 10-6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                <span>business@stackbrief.tech</span>
+              </a>
+              <a href="https://x.com" target="_blank" rel="noopener noreferrer" className="site-footer__link" aria-label="Follow us on X">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+                </svg>
+                <span>@stackbrief</span>
+              </a>
+            </footer>
             <div className="endbar">— end of today&apos;s brief —</div>
           </>
         )}
