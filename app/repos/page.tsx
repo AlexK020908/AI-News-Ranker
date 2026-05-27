@@ -7,9 +7,9 @@ import { ReposPage } from "@/components/stack/ReposPage";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-const MIN_STARS = 1000;
-const DAYS_BACK = 7;
-const MAX_ROWS = 50;
+const MIN_STARS = 500;
+const DAYS_BACK = 14;
+const MAX_ROWS = 200;
 
 // Whitelist for language values that flow into the SQL filter. Anything
 // not in this set falls back to "All" — keeps the URL surface from being

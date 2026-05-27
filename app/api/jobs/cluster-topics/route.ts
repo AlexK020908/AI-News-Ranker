@@ -17,7 +17,7 @@ export const runtime = "nodejs";
 export const maxDuration = 300;
 export const dynamic = "force-dynamic";
 
-const WINDOW_HOURS = 48;
+const WINDOW_HOURS = 96;
 // 0.72 catches loose thematic groupings — multi-outlet coverage of the same
 // story typically embeds at 0.80+, but related stories on the same topic
 // (different OpenAI announcements in the same week, etc.) sit around 0.72-0.80.
@@ -46,7 +46,7 @@ const PAPER_CLUSTER_THRESHOLD = 0.62;
 const MIN_CLUSTER_SIZE = 2;
 const PAPER_MIN_CLUSTER_SIZE = 2;
 const TOPIC_MATCH_THRESHOLD = 0.85;
-const STALE_HOURS = 72;
+const STALE_HOURS = 168;
 const LABEL_CONCURRENCY = 3;
 // Only match against topics recent enough to plausibly still exist after this
 // run's prune — bounds the centroid fetch to O(hours) rows instead of all-time.
