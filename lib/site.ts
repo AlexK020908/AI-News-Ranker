@@ -18,7 +18,7 @@ export const SITE_DESCRIPTION =
 // panel + verified-brand recognition). Uncomment / add real URLs as you
 // create the accounts — empty/placeholder lines are filtered out below.
 const SAME_AS_CANDIDATES: string[] = [
-  // "https://x.com/your_handle",
+  "https://x.com/AlexK0287",
   // "https://www.linkedin.com/company/your_company",
   // "https://github.com/your_org",
 ];
