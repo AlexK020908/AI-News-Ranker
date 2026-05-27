@@ -485,25 +485,21 @@ button:disabled { cursor: not-allowed; }
    as the user scrolls horizontally). */
 .cluster[data-variant="row"] {
   width: 300px;
-  height: 380px;
+  height: 440px;
   padding: 14px;
   gap: 10px;
   grid-template-rows: auto auto 1fr auto;
   flex-shrink: 0;
 }
-/* Paper cards carry a caveman explanation block in addition to the thumb,
-   so they need extra vertical room. All other topic rows stay at the
-   original compact size — caveman is paper-only. */
 .cluster[data-variant="row"][data-topic="paper"] {
   width: 320px;
-  height: 470px;
+  height: 530px;
 }
 .cluster[data-variant="row"] .cluster__body {
   grid-template-columns: 1fr;
   grid-template-rows: auto 1fr;
   gap: 10px;
   min-height: 0;
-  overflow: hidden;
 }
 .cluster[data-variant="row"] .thumb {
   aspect-ratio: auto;
@@ -512,7 +508,6 @@ button:disabled { cursor: not-allowed; }
 }
 .cluster[data-variant="row"] .cluster__summary-stack {
   min-height: 0;
-  overflow: hidden;
 }
 .cluster[data-variant="row"] .cluster__title {
   font-size: 15px;
@@ -689,7 +684,6 @@ button:disabled { cursor: not-allowed; }
   line-height: 1.5;
   padding: 8px 10px 10px;
   gap: 5px;
-  overflow: hidden;
   min-height: 0;
 }
 .cluster[data-variant="row"] .cluster__caveman__label { font-size: 9px; }
