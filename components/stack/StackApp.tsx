@@ -126,10 +126,16 @@ export function StackApp({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Handle browser back/forward to sync cluster state with URL
+  // Handle browser back/forward to sync topic + cluster state with URL
   useEffect(() => {
     const handler = () => {
       fromPopState.current = true;
+      const path = window.location.pathname.slice(1);
+      if (path && isStackTopicId(path)) {
+        setTopic(path);
+      } else if (window.location.pathname === "/") {
+        setTopic("all");
+      }
       const params = new URLSearchParams(window.location.search);
       const slug = params.get("cluster");
       if (slug) {
@@ -237,9 +243,8 @@ export function StackApp({
     if (!isStackTopicId(id)) return;
     setTopic(id);
     setDetailId(null);
-    const url = new URL(window.location.href);
-    url.searchParams.delete("cluster");
-    window.history.replaceState({}, "", url.toString());
+    const path = id === "all" ? "/" : `/${id}`;
+    window.history.pushState({}, "", path);
   };
 
   return (
@@ -255,7 +260,7 @@ export function StackApp({
         setEnabledCategories={setEnabledCategories}
         theme={dark ? "dark" : "light"}
         setTheme={(th) => setDark(th === "dark")}
-        onLogo={() => { closeCluster(); setTopic("all"); }}
+        onLogo={() => { setDetailId(null); setTopic("all"); window.history.pushState({}, "", "/"); }}
         onShowOnb={() => setShowOnb(true)}
         onShowSubscribe={() => setShowSub(true)}
         scrolled={scrollY > 8}
