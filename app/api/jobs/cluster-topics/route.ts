@@ -18,11 +18,10 @@ export const maxDuration = 300;
 export const dynamic = "force-dynamic";
 
 const WINDOW_HOURS = 96;
-// 0.72 catches loose thematic groupings — multi-outlet coverage of the same
-// story typically embeds at 0.80+, but related stories on the same topic
-// (different OpenAI announcements in the same week, etc.) sit around 0.72-0.80.
-// Tighten back to 0.78 if clusters start collapsing unrelated stories.
-const CLUSTER_THRESHOLD = 0.72;
+// 0.76 balances same-story grouping (0.80+) with related-topic grouping
+// (0.72-0.80). Tightened from 0.72 which was collapsing loosely related
+// stories (e.g. different funding rounds) into one cluster.
+const CLUSTER_THRESHOLD = 0.76;
 // Lower threshold for a second pass restricted to paper items. arXiv
 // preprints embed each other tightly when they share subject matter
 // (diffusion ↔ diffusion, RAG ↔ RAG) at 0.62-0.70. The standard 0.72
@@ -79,6 +78,7 @@ interface ExistingTopic {
   slug: string;
   label: string;
   summary: string | null;
+  member_count: number;
   // Always a parsed array (or null) by the time this type is consumed;
   // the raw row is normalized through parseVector() at load time.
   centroid: number[] | null;
@@ -219,7 +219,7 @@ export async function GET(req: NextRequest) {
   ).toISOString();
   const { data: existingRows, error: eErr } = await supabase
     .from("topics")
-    .select("id, slug, label, summary, centroid, member_hash")
+    .select("id, slug, label, summary, member_count, centroid, member_hash")
     .gte("last_updated_at", matchSince)
     .order("last_updated_at", { ascending: false })
     .limit(MAX_EXISTING_TOPICS);
@@ -285,10 +285,27 @@ export async function GET(req: NextRequest) {
     const canReuseLabel =
       match && match.label && isTightEnoughToReuse(cluster);
     if (canReuseLabel && match) {
-      label = match.label;
-      summary = match.summary;
+      const memberCountDelta = Math.abs(cluster.member_count - (match.member_count ?? 0));
+      const hasHighImpactMember = cluster.member_ids.some(
+        (id) => (itemById.get(id)?.importance ?? 0) >= 80,
+      );
+      if (memberCountDelta >= 2 || hasHighImpactMember) {
+        const labelResult = await labelClusterSafe(cluster, itemById);
+        if (labelResult) {
+          label = labelResult.label;
+          summary = labelResult.summary || null;
+          labeled++;
+        } else {
+          label = match.label;
+          summary = match.summary;
+          reused++;
+        }
+      } else {
+        label = match.label;
+        summary = match.summary;
+        reused++;
+      }
       slug = match.slug;
-      reused++;
     } else {
       const labelResult = await labelClusterSafe(cluster, itemById);
       if (!labelResult) {
