@@ -13,7 +13,7 @@ import type { RisingStandalone } from "@/lib/stack/rising-transform";
 import type { TrendingRepoCard } from "@/lib/stack/trending-repo-transform";
 
 const MAX_TOPICS = 240;
-const SOLO_DAYS = 4;
+const SOLO_DAYS = 7;
 const SOLO_MAX = 200;
 const SOLO_MIN_IMPORTANCE = 25;
 const HOME_REPOS_MIN_STARS = 1000;
