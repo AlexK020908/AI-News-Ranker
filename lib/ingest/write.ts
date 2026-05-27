@@ -93,21 +93,68 @@ export async function upsertItems(
   // passes the url lookup above as "new", then violates (source_id,
   // external_id) on insert; onConflict:"url" doesn't catch it, so the whole
   // chunk throws (line below) and the source's ingest tick aborts. Pre-fetch
-  // existing external_ids for this source and treat them as already-seen:
-  // keep the existing row rather than inserting a colliding duplicate.
+  // existing external_ids for this source so we can: (a) skip true duplicates,
+  // and (b) patch rows whose url or thumbnail improved since first ingest
+  // (Techmeme publishes skeleton items then backfills images moments later).
   const externalIds = unique.map((i) => i.external_id);
-  const seenExternalIds = new Set<string>();
+  const seenExternalIds = new Map<string, { id: string; url: string; has_thumb: boolean }>();
   for (let i = 0; i < externalIds.length; i += LOOKUP_CHUNK) {
     const slice = externalIds.slice(i, i + LOOKUP_CHUNK);
     const { data, error } = await supabase
       .from("items")
-      .select("external_id")
+      .select("id, external_id, url, raw")
       .eq("source_id", sourceId)
       .in("external_id", slice);
     if (error) throw new Error(`lookup existing external_id: ${error.message}`);
-    for (const row of (data ?? []) as { external_id: string }[]) {
-      seenExternalIds.add(row.external_id);
+    for (const row of (data ?? []) as {
+      id: string;
+      external_id: string;
+      url: string;
+      raw: Record<string, unknown> | null;
+    }[]) {
+      seenExternalIds.set(row.external_id, {
+        id: row.id,
+        url: row.url,
+        has_thumb: !!(row.raw && row.raw.thumbnail_candidate_url),
+      });
     }
+  }
+
+  // Patch existing rows whose url or thumbnail improved since first ingest.
+  // Techmeme (and similar aggregators) sometimes publish a skeleton description
+  // that the RSS adapter can't fully parse; a later poll returns richer HTML
+  // that yields the real article URL + thumbnail. Without this patch the old
+  // row — with the wrong URL and no image — would stick forever because the
+  // external_id dedup above blocks a re-insert.
+  for (const it of unique) {
+    const existing = seenExternalIds.get(it.external_id);
+    if (!existing) continue;
+    const urlChanged = it.url !== existing.url;
+    const thumbGained = !existing.has_thumb && !!it.thumbnail_candidate_url;
+    if (!urlChanged && !thumbGained) continue;
+
+    const updatePayload: Record<string, unknown> = {};
+    if (urlChanged) updatePayload.url = it.url;
+    if (thumbGained) {
+      // Supabase .update() replaces the whole `raw` column, so read-modify-
+      // write to avoid clobbering unrelated fields. The initial SELECT above
+      // already returned raw, but row-level re-fetch is safer against races.
+      const { data: curr } = await supabase
+        .from("items")
+        .select("raw")
+        .eq("id", existing.id)
+        .single();
+      updatePayload.raw = {
+        ...((curr?.raw as Record<string, unknown>) ?? {}),
+        thumbnail_candidate_url: it.thumbnail_candidate_url,
+        // Clear dead-letter flags so the enrich job retries S3 upload.
+        thumbnail_attempted_at: null,
+        thumbnail_transient_count: 0,
+      };
+    }
+    await supabase.from("items").update(updatePayload).eq("id", existing.id);
+    // Register the id so snapshots still fire for this item.
+    urlToId.set(it.url, existing.id);
   }
 
   const newItems = unique.filter(
