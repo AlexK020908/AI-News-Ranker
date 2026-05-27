@@ -1,6 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+
+const useBrowserLayoutEffect =
+  typeof window !== "undefined" ? useLayoutEffect : useEffect;
 import type { StackCluster } from "@/lib/stack/types";
 import type { RisingStandalone } from "@/lib/stack/rising-transform";
 import type { TrendingRepoCard } from "@/lib/stack/trending-repo-transform";
@@ -115,7 +118,9 @@ export function StackApp({
   }, [enabledCategories]);
 
   // --- URL sync: read ?cluster=slug on mount and auto-open ---
-  useEffect(() => {
+  // useLayoutEffect prevents the flash where the home page renders
+  // before the cluster detail opens.
+  useBrowserLayoutEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const slug = params.get("cluster");
     if (slug) {
