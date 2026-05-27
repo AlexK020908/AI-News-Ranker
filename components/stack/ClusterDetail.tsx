@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import type { StackCluster } from "@/lib/stack/types";
 import { STACK_TOPICS } from "@/lib/stack/topics";
 import { hoursAgoLabel } from "@/lib/stack/format";
@@ -12,6 +13,16 @@ interface Props {
 
 export function ClusterDetail({ cluster, onBack }: Props) {
   const topic = STACK_TOPICS.find((t) => t.id === cluster.topic);
+  const [copied, setCopied] = useState(false);
+
+  const copyLink = () => {
+    const url = `${window.location.origin}/topic/${cluster.slug}`;
+    navigator.clipboard.writeText(url).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
   return (
     <div>
       <div className="crumb">
@@ -73,6 +84,29 @@ export function ClusterDetail({ cluster, onBack }: Props) {
           </div>
           <span className="cluster__head__sep">·</span>
           <div className="cluster__readtime">{cluster.readMin} min read</div>
+          <span className="cluster__head__sep">·</span>
+          <button
+            className="cluster__share"
+            onClick={copyLink}
+            title="Copy link to this cluster"
+          >
+            {copied ? (
+              <>
+                <svg width="13" height="13" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                  <path d="M3 7.5l2.5 2.5L11 4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                Copied
+              </>
+            ) : (
+              <>
+                <svg width="13" height="13" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                  <path d="M8.5 3.5h-4a1 1 0 00-1 1v6a1 1 0 001 1h4a1 1 0 001-1v-6a1 1 0 00-1-1z" stroke="currentColor" strokeWidth="1.2" />
+                  <path d="M5.5 3.5v-1a1 1 0 011-1h4a1 1 0 011 1v6a1 1 0 01-1 1h-1" stroke="currentColor" strokeWidth="1.2" />
+                </svg>
+                Share
+              </>
+            )}
+          </button>
         </div>
       </div>
 

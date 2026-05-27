@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { StackCluster } from "@/lib/stack/types";
 import type { RisingStandalone } from "@/lib/stack/rising-transform";
 import type { TrendingRepoCard } from "@/lib/stack/trending-repo-transform";
@@ -47,17 +47,20 @@ interface Props {
   clusters: StackCluster[];
   risingSingletons?: RisingStandalone[];
   trendingRepos?: TrendingRepoCard[];
+  defaultTopic?: string;
 }
 
 export function StackApp({
   clusters,
   risingSingletons = [],
   trendingRepos = [],
+  defaultTopic = "all",
 }: Props) {
   const [dark, setDark] = useState(true);
   const [accent] = useState("#f5a73c");
-  const [topic, setTopic] = useState("all");
+  const [topic, setTopic] = useState(defaultTopic);
   const [detailId, setDetailId] = useState<string | null>(null);
+  const fromPopState = useRef(false);
   const [showOnb, setShowOnb] = useState(false);
   const [showSub, setShowSub] = useState(false);
   // Multi-select category subset for the "All" view. Default = every
@@ -110,6 +113,55 @@ export function StackApp({
       localStorage.setItem(CATEGORIES_KEY, JSON.stringify([...enabledCategories]));
     } catch { /* private mode — silently no-op */ }
   }, [enabledCategories]);
+
+  // --- URL sync: read ?cluster=slug on mount and auto-open ---
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const slug = params.get("cluster");
+    if (slug) {
+      const match = clusters.find((c) => c.slug === slug);
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      if (match) setDetailId(match.id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Handle browser back/forward to sync cluster state with URL
+  useEffect(() => {
+    const handler = () => {
+      fromPopState.current = true;
+      const params = new URLSearchParams(window.location.search);
+      const slug = params.get("cluster");
+      if (slug) {
+        const match = clusters.find((c) => c.slug === slug);
+        setDetailId(match?.id ?? null);
+      } else {
+        setDetailId(null);
+      }
+    };
+    window.addEventListener("popstate", handler);
+    return () => window.removeEventListener("popstate", handler);
+  }, [clusters]);
+
+  const openCluster = useCallback(
+    (id: string) => {
+      const cluster = clusters.find((c) => c.id === id);
+      setDetailId(id);
+      if (cluster) {
+        const url = new URL(window.location.href);
+        url.searchParams.set("cluster", cluster.slug);
+        window.history.pushState({ cluster: cluster.slug }, "", url.toString());
+      }
+    },
+    [clusters],
+  );
+
+  const closeCluster = useCallback(() => {
+    setDetailId(null);
+    const url = new URL(window.location.href);
+    url.searchParams.delete("cluster");
+    window.history.pushState({}, "", url.toString());
+  }, []);
 
   const docMax = typeof document !== "undefined"
     ? Math.max(1, document.documentElement.scrollHeight - window.innerHeight)
@@ -174,6 +226,10 @@ export function StackApp({
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+    if (fromPopState.current) {
+      fromPopState.current = false;
+      return;
+    }
     window.scrollTo({ top: 0, behavior: "instant" });
   }, [detailId]);
 
@@ -181,6 +237,9 @@ export function StackApp({
     if (!isStackTopicId(id)) return;
     setTopic(id);
     setDetailId(null);
+    const url = new URL(window.location.href);
+    url.searchParams.delete("cluster");
+    window.history.replaceState({}, "", url.toString());
   };
 
   return (
@@ -196,7 +255,7 @@ export function StackApp({
         setEnabledCategories={setEnabledCategories}
         theme={dark ? "dark" : "light"}
         setTheme={(th) => setDark(th === "dark")}
-        onLogo={() => { setDetailId(null); setTopic("all"); }}
+        onLogo={() => { closeCluster(); setTopic("all"); }}
         onShowOnb={() => setShowOnb(true)}
         onShowSubscribe={() => setShowSub(true)}
         scrolled={scrollY > 8}
@@ -204,7 +263,7 @@ export function StackApp({
 
       <main className="shell">
         {detail ? (
-          <ClusterDetail cluster={detail} onBack={() => setDetailId(null)} />
+          <ClusterDetail cluster={detail} onBack={closeCluster} />
         ) : (
           <>
             <BriefingHeader
@@ -226,7 +285,7 @@ export function StackApp({
                     key={category}
                     label={label}
                     clusters={row}
-                    onOpen={setDetailId}
+                    onOpen={openCluster}
                   />
                 ))}
               </div>
@@ -241,7 +300,7 @@ export function StackApp({
                     key={c.id}
                     cluster={c}
                     variant="row"
-                    onOpen={setDetailId}
+                    onOpen={openCluster}
                     index={i}
                   />
                 ))}

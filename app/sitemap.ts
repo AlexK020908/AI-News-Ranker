@@ -1,10 +1,7 @@
 import type { MetadataRoute } from "next";
 import { SITE_URL } from "@/lib/site";
+import { CATEGORIES, CATEGORY_LABELS } from "@/lib/types";
 
-// Served at /sitemap.xml. Lists the stable, publicly-indexable routes. Topic
-// and item detail pages are DB-driven and force-dynamic, so they're left out
-// here rather than enumerated at build time — add a generateSitemaps-backed
-// per-segment sitemap if/when those pages become worth indexing individually.
 export default function sitemap(): MetadataRoute.Sitemap {
   const now = new Date();
   return [
@@ -14,6 +11,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: "daily",
       priority: 1,
     },
+    ...CATEGORIES.map((cat) => ({
+      url: `${SITE_URL}/${cat}`,
+      lastModified: now,
+      changeFrequency: "daily" as const,
+      priority: 0.8,
+    })),
     {
       url: `${SITE_URL}/repos`,
       lastModified: now,

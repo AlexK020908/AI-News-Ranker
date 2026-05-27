@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import type { Category } from "@/lib/types";
+import { isCategory, type Category } from "@/lib/types";
 import { STACK_TOPICS } from "@/lib/stack/topics";
 import { TopicFilterDropdown } from "./TopicFilterDropdown";
 
@@ -38,14 +38,17 @@ export function Nav({
   scrolled,
 }: Props) {
   const pathname = usePathname();
+  const pathCategory = pathname.slice(1);
+  const isCategoryRoute = isCategory(pathCategory);
   const isHome = pathname === "/";
+  const isBriefing = isHome || isCategoryRoute;
   const isRepos = pathname === "/repos";
   const isX = pathname === "/x";
 
   return (
     <nav className={`nav${scrolled ? " scrolled" : ""}`}>
       <div className="nav__inner">
-        {isHome ? (
+        {isBriefing ? (
           <div className="brand" onClick={onLogo}>
             <span className="brand__mark">SB</span>
             <span className="brand__name">StackBrief<span className="brand__dot">.</span></span>
@@ -59,10 +62,7 @@ export function Nav({
 
         <div className="nav__pills">
           {STACK_TOPICS.map((t) => {
-            // On the home page, pills are filter buttons (no navigation).
-            // On other routes, pills navigate back to / since topic state
-            // only lives on the home cluster grid.
-            if (isHome) {
+            if (isBriefing) {
               return (
                 <button
                   key={t.id}
@@ -114,7 +114,7 @@ export function Nav({
         </Link>
 
         <div className="nav__actions">
-          {isHome && enabledCategories && setEnabledCategories && (
+          {isBriefing && enabledCategories && setEnabledCategories && (
             <TopicFilterDropdown
               enabled={enabledCategories}
               setEnabled={setEnabledCategories}
