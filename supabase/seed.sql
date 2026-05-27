@@ -264,6 +264,15 @@ insert into sources (slug, name, kind, region, config, poll_interval_sec) values
 -- Agent etc.), so weighted low like broad tech below.
 ('figma-blog',             'Figma Blog',                  'rss', 'global',
   '{"url":"https://www.figma.com/blog/feed/atom.xml"}',                                              7200),
+-- ============== Added 2026-05-27: user-sourced broad-tech feeds ==============
+-- Both are broad outlets; enrich importance scoring filters to AI-relevant
+-- items. Chrome Dev Blog covers built-in AI APIs, Gemini Nano, etc.
+-- Sherwood News covers tech/finance with regular AI coverage.
+('chrome-dev-blog',        'Chrome Dev Blog',             'rss', 'global',
+  '{"url":"https://developer.chrome.com/blog/feed.xml"}',                                              7200),
+('sherwood-news',          'Sherwood News',               'rss', 'global',
+  '{"url":"https://sherwood.news/feed"}',                                                              3600),
+
 -- TLDR-audit adds (RSS live-tested 2026-05-24, all <20d fresh).
 ('epoch-ai',               'Epoch AI',                    'rss', 'global',
   '{"url":"https://epochai.substack.com/feed"}',                                                     21600),
@@ -590,7 +599,9 @@ update sources set reputation_weight = 0.8 where slug in (
   -- often re-reports the primary source).
   'thenextweb', '9to5google', 'searchengineland', 'testingcatalog',
   -- 2026-05-24: design-tool blog, AI-adjacent.
-  'figma-blog'
+  'figma-blog',
+  -- 2026-05-27: broad tech/finance outlets with AI coverage.
+  'chrome-dev-blog', 'sherwood-news'
 );
 
 -- X / Twitter accounts. reputation_weight has little effect on the /x surface
