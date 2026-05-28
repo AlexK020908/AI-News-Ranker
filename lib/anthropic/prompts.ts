@@ -5,7 +5,10 @@ For each item, output STRICT JSON matching this schema — no prose, no markdown
   "summary": string,         // 2-3 sentences, <= 320 chars. Plain English. State what it IS and why it matters. Never start with "This article" or similar filler.
   "category": string,        // one of: paper | model | release | repo | funding | announcement | discussion | tool | news | other
   "tags": string[],          // 2-5 short lowercase tags (e.g., ["llm","reasoning","anthropic"])
-  "importance": number,      // integer 0-100 per rubric below
+  "novelty": number,         // integer 1-5, see SCORING AXES below
+  "impact": number,          // integer 1-5
+  "credibility": number,     // integer 1-5
+  "actionability": number,   // integer 1-5
   "caveman_summary": string  // ONLY for category="paper". Otherwise omit or set to null. See CAVEMAN below.
 }
 
@@ -52,17 +55,37 @@ Common misclassifications to avoid:
 
 "announcement" should be RARE. If you find yourself reaching for it, re-check the tree above first.
 
-IMPORTANCE rubric (be calibrated — most items are 30-60; reserve 85+ for genuinely big):
-- 95-100: Frontier lab MAJOR release that will dominate the news cycle (new GPT/Claude/Gemini flagship, first-of-kind capability).
-- 85-94: New SOTA or near-SOTA model release, breakthrough paper that meaningfully shifts a benchmark, mega funding round ($500M+), landmark acquisition.
-- 70-84: Strong open-source model release, significant paper with real novelty, major product feature, $100M+ raise, flagship tooling.
-- 55-69: Solid paper, well-executed OSS project likely to get traction, notable feature, $20-100M raise.
-- 40-54: Competent but not standout paper, decent tool release, incremental product update.
-- 25-39: Minor update, explainer/tutorial, small OSS project, community discussion.
-- 10-24: Low-signal post, recycled content, marketing fluff.
-- 0-9: Noise, pure spam, off-topic.
+SCORING AXES — rate each on an integer 1-5. Be willing to use the full range. Most items are NOT a 3 on every axis; if you feel yourself defaulting to 3s, pick the axis you have the strongest opinion about and move it. The four axes are scored INDEPENDENTLY — an unreleased theoretical breakthrough can be high novelty + high impact + low actionability, and that's correct.
 
-Be ruthless about importance. Do NOT inflate scores for enthusiasm. If it's routine, score it routinely.
+novelty — how new is the idea, approach, or result?
+  1: rehash, restatement, or a tutorial of known material
+  2: minor extension or application of an established technique
+  3: meaningful incremental contribution (better numbers, new combination)
+  4: clearly novel approach, surprising result, or first-of-kind in its niche
+  5: new paradigm or first-of-kind capability for the field
+
+impact — how much will this shift practice, benchmarks, or the conversation?
+  1: niche curiosity, unlikely to be cited or used
+  2: narrow audience, limited reach
+  3: noticed by practitioners in this subfield
+  4: likely to be widely adopted or to move a benchmark
+  5: will dominate the news cycle / become required reading across the field
+
+credibility — how trustworthy is the work itself?
+  1: anonymous, no evidence, marketing fluff, or obvious overclaim
+  2: thin evidence, unverified single-author post
+  3: competent work from a known individual or smaller lab; reasonable evidence
+  4: strong methodology from a reputable team, solid ablations or peer review
+  5: top-tier lab or major institution with rigorous evidence / replication
+
+actionability — can a reader USE this today?
+  1: pure theory or speculation, no artifact
+  2: paper / writeup with no code, models, or product
+  3: code or demo exists but is rough / not production-ready
+  4: usable open model, repo, SDK, or product launched today
+  5: flagship release that's immediately deployable at scale (API, polished tool, weights you can run now)
+
+DO NOT inflate axes for enthusiasm. A "cool" paper with no code is still actionability 1-2. A polished marketing rehash is still novelty 1.
 
 For title/content that looks like academic paper, category MUST be "paper".
 For items from github_trending / github_search sources, category is usually "repo" unless it's clearly a paper-with-code or model.`;
@@ -71,7 +94,10 @@ export interface EnrichmentOutput {
   summary: string;
   category: string;
   tags: string[];
-  importance: number;
+  novelty: number;
+  impact: number;
+  credibility: number;
+  actionability: number;
   // Only set for category="paper". Plain-English explanation of the paper
   // for non-academic readers. See CAVEMAN block in the system prompt.
   caveman_summary?: string | null;

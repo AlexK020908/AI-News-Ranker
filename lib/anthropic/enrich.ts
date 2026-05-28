@@ -6,6 +6,7 @@ import {
 } from "./prompts";
 import { CATEGORIES, type Category } from "@/lib/types";
 import { extractJsonBlock } from "@/lib/utils";
+import { normalizeSubScores, type SubScores } from "./scoring";
 
 export interface EnrichInput {
   sourceName: string;
@@ -21,7 +22,11 @@ export interface EnrichResult {
   summary: string;
   category: Category;
   tags: string[];
-  importance: number;
+  // Raw 1-5 ordinal axis ratings from Claude. The final 0-100 importance is
+  // computed in the enrich route by combineImportance() because it needs row
+  // signals (engagement_score, source.reputation_weight, paper citations)
+  // that aren't visible inside enrichItem.
+  subScores: SubScores;
   // Plain-English paper explanation. Only populated when Claude returned
   // a non-empty caveman_summary AND the category resolved to "paper".
   caveman_summary: string | null;
@@ -54,9 +59,6 @@ export async function enrichItem(input: EnrichInput): Promise<EnrichResult> {
   }
   const parsed = parseEnrichmentJSON(textBlock.text);
   const category = normalizeCategory(parsed.category);
-  // Only retain caveman_summary if Claude flagged this as a paper. Anything
-  // else either had no caveman field returned (per instruction) or it was a
-  // hallucinated stray — drop it.
   const cavemanRaw = typeof parsed.caveman_summary === "string"
     ? parsed.caveman_summary.trim()
     : "";
@@ -64,7 +66,12 @@ export async function enrichItem(input: EnrichInput): Promise<EnrichResult> {
     summary: parsed.summary,
     category,
     tags: normalizeTags(parsed.tags),
-    importance: clampImportance(parsed.importance),
+    subScores: normalizeSubScores({
+      novelty: parsed.novelty,
+      impact: parsed.impact,
+      credibility: parsed.credibility,
+      actionability: parsed.actionability,
+    }),
     caveman_summary: category === "paper" && cavemanRaw.length > 0
       ? cavemanRaw.slice(0, 320)
       : null,
@@ -79,7 +86,8 @@ function parseEnrichmentJSON(text: string): EnrichmentOutput {
   if (typeof obj.summary !== "string") throw new Error("summary missing");
   if (typeof obj.category !== "string") throw new Error("category missing");
   if (!Array.isArray(obj.tags)) throw new Error("tags missing");
-  if (typeof obj.importance !== "number") throw new Error("importance missing");
+  // Sub-scores are soft-validated downstream in normalizeSubScores — a single
+  // missing axis defaults to 3 rather than failing the whole enrichment.
   return obj as EnrichmentOutput;
 }
 
@@ -94,10 +102,4 @@ function normalizeTags(tags: unknown[]): string[] {
     .map((t) => t.toLowerCase().trim().replace(/\s+/g, "-"))
     .filter((t) => t.length > 0 && t.length <= 32)
     .slice(0, 5);
-}
-
-function clampImportance(n: number): number {
-  const i = Math.round(n);
-  if (Number.isNaN(i)) return 30;
-  return Math.max(0, Math.min(100, i));
 }

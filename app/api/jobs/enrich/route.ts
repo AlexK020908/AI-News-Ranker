@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { enrichItem } from "@/lib/anthropic/enrich";
+import { combineImportance } from "@/lib/anthropic/scoring";
 import { embedText } from "@/lib/anthropic/embed";
 import {
   extractArxivId,
@@ -11,7 +12,7 @@ import { isAuthorizedJob } from "@/lib/job-auth";
 import { runPool } from "@/lib/utils";
 import { getBlockedHosts, getStorage } from "@/lib/storage/s3";
 import { fetchPageOgImage, githubRepoOgImage } from "@/lib/ingest/og-image";
-import { DEFAULT_REGION, type SourceKind } from "@/lib/types";
+import { DEFAULT_REGION, type Category, type SourceKind } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -40,6 +41,7 @@ interface UnenrichedRow {
   raw: Record<string, unknown> | null;
   external_id: string;
   s3_storage_id: string | null;
+  engagement_score: number | null;
   source: { slug: string; name: string; kind: SourceKind; reputation_weight: number };
 }
 
@@ -93,6 +95,17 @@ export async function GET(req: NextRequest) {
     return await runCavemanBackfill(limit);
   }
 
+  // Importance backfill — re-run enrichItem on enriched rows that pre-date the
+  // sub-scores migration. Recomputes sub_scores + importance using the new
+  // multi-axis combiner. Everything else on the row stays as-is. Dead-lettered
+  // via raw.importance_backfilled_at so a single bad row doesn't cycle.
+  if (searchParams.get("backfill_importance") === "1") {
+    if (!process.env.ANTHROPIC_API_KEY) {
+      return Response.json({ error: "ANTHROPIC_API_KEY not set" }, { status: 500 });
+    }
+    return await runImportanceBackfill(limit);
+  }
+
   if (!process.env.ANTHROPIC_API_KEY) {
     return Response.json({ error: "ANTHROPIC_API_KEY not set" }, { status: 500 });
   }
@@ -102,7 +115,7 @@ export async function GET(req: NextRequest) {
     const { data, error } = await supabase
       .from("items")
       .select(
-        "id, source_id, title, url, author, content, published_at, region, raw, external_id, s3_storage_id, source:sources!inner(slug, name, kind, reputation_weight)",
+        "id, source_id, title, url, author, content, published_at, region, raw, external_id, s3_storage_id, engagement_score, source:sources!inner(slug, name, kind, reputation_weight)",
       )
       .is("enriched_at", null)
       .is("enrich_error", null)
@@ -145,10 +158,13 @@ export async function GET(req: NextRequest) {
           summary: result.summary,
           category: result.category,
           tags: result.tags,
-          importance: result.importance,
+          sub_scores: result.subScores,
           enriched_at: new Date().toISOString(),
           enrich_error: null,
         };
+        // Importance is computed AFTER the optional Semantic Scholar block
+        // below so the citation bump (paper-only) can factor in. Assigned to
+        // `update.importance` at the end of this block, before the DB write.
         // Plain-English caveman explanation — only persisted for papers.
         // Claude is instructed to omit it for non-paper items, but the
         // belt-and-suspenders gate here keeps a stray response from
@@ -193,6 +209,23 @@ export async function GET(req: NextRequest) {
           }
         }
 
+        // Now that paper citations may have been populated, combine the
+        // sub-scores + row signals into a final 0-100 importance. Done last so
+        // every signal that's going to be available IS available — running it
+        // earlier would miss the citation bump for fresh arXiv rows.
+        update.importance = combineImportance({
+          subScores: result.subScores,
+          signals: {
+            engagementScore: r.engagement_score,
+            reputationWeight: r.source.reputation_weight,
+            influentialCitations:
+              typeof update.paper_influential_citations === "number"
+                ? update.paper_influential_citations
+                : null,
+            isPaper: result.category === "paper",
+          },
+        });
+
         const { error: uErr } = await supabase.from("items").update(update).eq("id", r.id);
         if (uErr) throw new Error(uErr.message);
         if (update.duplicate_of) {
@@ -235,7 +268,7 @@ async function runThumbnailBackfill(limit: number): Promise<Response> {
     let query = supabase
       .from("items")
       .select(
-        "id, source_id, title, url, author, content, published_at, region, raw, external_id, s3_storage_id, source:sources!inner(slug, name, kind, reputation_weight)",
+        "id, source_id, title, url, author, content, published_at, region, raw, external_id, s3_storage_id, engagement_score, source:sources!inner(slug, name, kind, reputation_weight)",
       )
       .not("enriched_at", "is", null)
       .is("s3_storage_id", null)
@@ -304,7 +337,7 @@ async function runCavemanBackfill(limit: number): Promise<Response> {
     const { data, error } = await supabase
       .from("items")
       .select(
-        "id, source_id, title, url, author, content, published_at, region, raw, external_id, s3_storage_id, source:sources!inner(slug, name, kind, reputation_weight)",
+        "id, source_id, title, url, author, content, published_at, region, raw, external_id, s3_storage_id, engagement_score, source:sources!inner(slug, name, kind, reputation_weight)",
       )
       .eq("category", "paper")
       .is("caveman_summary", null)
@@ -360,6 +393,88 @@ async function runCavemanBackfill(limit: number): Promise<Response> {
       batch: rows.length,
       updated,
       empty,
+      failed,
+    });
+  } catch (e) {
+    return Response.json({ ok: false, error: (e as Error).message }, { status: 500 });
+  }
+}
+
+async function runImportanceBackfill(limit: number): Promise<Response> {
+  try {
+    const supabase = createSupabaseServiceClient();
+    // Target: enriched rows with no sub_scores (pre-migration) that we
+    // haven't already tried. raw.importance_backfilled_at is the dead-letter
+    // marker — without it, a row whose enrichItem keeps throwing would
+    // cycle through every batch forever.
+    const { data, error } = await supabase
+      .from("items")
+      .select(
+        "id, source_id, title, url, author, content, published_at, region, raw, external_id, s3_storage_id, engagement_score, category, paper_influential_citations, source:sources!inner(slug, name, kind, reputation_weight)",
+      )
+      .not("enriched_at", "is", null)
+      .is("sub_scores", null)
+      .is("duplicate_of", null)
+      .filter("raw->>importance_backfilled_at", "is", null)
+      .order("ingested_at", { ascending: false })
+      .limit(limit);
+
+    if (error) throw new Error(error.message);
+    type BackfillRow = UnenrichedRow & {
+      category: Category | null;
+      paper_influential_citations: number | null;
+    };
+    const rows = (data ?? []) as unknown as BackfillRow[];
+
+    let updated = 0;
+    let failed = 0;
+
+    await runPool(rows, CONCURRENCY, async (r) => {
+      const nowIso = new Date().toISOString();
+      try {
+        const result = await enrichItem({
+          sourceName: r.source.name,
+          sourceKind: r.source.kind,
+          title: r.title,
+          url: r.url,
+          author: r.author,
+          content: r.content,
+          publishedAt: r.published_at,
+        });
+
+        // Use the freshly classified category from the re-enrichment to gate
+        // the citation bump — a row that no longer classifies as a paper
+        // shouldn't get a paper-only bonus, and vice versa.
+        const importance = combineImportance({
+          subScores: result.subScores,
+          signals: {
+            engagementScore: r.engagement_score,
+            reputationWeight: r.source.reputation_weight,
+            influentialCitations: r.paper_influential_citations,
+            isPaper: result.category === "paper",
+          },
+        });
+
+        const patch: Record<string, unknown> = {
+          sub_scores: result.subScores,
+          importance,
+          raw: { ...(r.raw ?? {}), importance_backfilled_at: nowIso },
+        };
+
+        const { error: uErr } = await supabase.from("items").update(patch).eq("id", r.id);
+        if (uErr) throw new Error(uErr.message);
+        updated++;
+      } catch (e) {
+        failed++;
+        console.warn(`[enrich/importance] ${r.id} failed: ${(e as Error).message.slice(0, 200)}`);
+      }
+    });
+
+    return Response.json({
+      ok: true,
+      mode: "backfill_importance",
+      batch: rows.length,
+      updated,
       failed,
     });
   } catch (e) {
