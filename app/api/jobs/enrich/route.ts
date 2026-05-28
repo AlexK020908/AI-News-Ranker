@@ -214,6 +214,7 @@ export async function GET(req: NextRequest) {
         // every signal that's going to be available IS available — running it
         // earlier would miss the citation bump for fresh arXiv rows.
         update.importance = combineImportance({
+          tier: result.tier,
           subScores: result.subScores,
           signals: {
             engagementScore: r.engagement_score,
@@ -446,6 +447,7 @@ async function runImportanceBackfill(limit: number): Promise<Response> {
         // the citation bump — a row that no longer classifies as a paper
         // shouldn't get a paper-only bonus, and vice versa.
         const importance = combineImportance({
+          tier: result.tier,
           subScores: result.subScores,
           signals: {
             engagementScore: r.engagement_score,

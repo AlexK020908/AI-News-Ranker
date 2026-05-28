@@ -11,6 +11,7 @@ import {
 } from "@/lib/topics/cluster";
 import { labelCluster, slugify } from "@/lib/topics/label";
 import { runPool } from "@/lib/utils";
+import { HIGH_IMPACT_MEMBER_IMPORTANCE } from "@/lib/anthropic/scoring";
 import { twitterSourceIds, pgInList } from "@/lib/twitter-sources";
 
 export const runtime = "nodejs";
@@ -54,8 +55,16 @@ const MAX_EXISTING_TOPICS = 500;
 
 // Trending score for a topic. Mirrors the per-item formula but operates on the
 // cluster aggregate so big-and-important topics outrank big-but-noisy ones.
+//
+// member_count is cross-source corroboration — N independent reputable outlets
+// covering the same story, the gold-standard anti-manipulation signal (see
+// lib/stories.ts). We weight it via member_count^CORROBORATION_EXP so it pulls
+// harder than the per-item importance (an LLM-derived number we want to lean on
+// LESS). Raised from 0.5 (plain sqrt) to 0.6 so a 4-source "notable" story
+// edges out a solo "breaking"-ish item whose high score is one model's opinion.
+const CORROBORATION_EXP = 0.6;
 function topicTrending(c: Cluster, ageHours: number): number {
-  const impact = c.avg_importance * Math.sqrt(c.member_count);
+  const impact = c.avg_importance * Math.pow(c.member_count, CORROBORATION_EXP);
   return impact / Math.pow(Math.max(0, ageHours) + 2, 1.1);
 }
 
@@ -287,7 +296,7 @@ export async function GET(req: NextRequest) {
     if (canReuseLabel && match) {
       const memberCountDelta = Math.abs(cluster.member_count - (match.member_count ?? 0));
       const hasHighImpactMember = cluster.member_ids.some(
-        (id) => (itemById.get(id)?.importance ?? 0) >= 80,
+        (id) => (itemById.get(id)?.importance ?? 0) >= HIGH_IMPACT_MEMBER_IMPORTANCE,
       );
       if (memberCountDelta >= 2 || hasHighImpactMember) {
         const labelResult = await labelClusterSafe(cluster, itemById);

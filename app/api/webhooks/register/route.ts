@@ -7,6 +7,7 @@ import {
   postToDiscord,
 } from "@/lib/webhooks";
 import { CATEGORIES } from "@/lib/types";
+import { WEBHOOK_DEFAULT_MIN_IMPORTANCE } from "@/lib/anthropic/scoring";
 import { SITE_URL } from "@/lib/site";
 
 export const runtime = "nodejs";
@@ -14,7 +15,7 @@ export const dynamic = "force-dynamic";
 
 const RegisterBody = z.object({
   url: z.string().url().max(512),
-  min_importance: z.number().int().min(0).max(100).default(80),
+  min_importance: z.number().int().min(0).max(100).default(WEBHOOK_DEFAULT_MIN_IMPORTANCE),
   categories: z.array(z.enum(CATEGORIES)).max(CATEGORIES.length).default([]),
 });
 

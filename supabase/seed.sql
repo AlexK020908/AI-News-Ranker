@@ -272,6 +272,17 @@ insert into sources (slug, name, kind, region, config, poll_interval_sec) values
   '{"url":"https://developer.chrome.com/blog/feed.xml"}',                                              7200),
 ('sherwood-news',          'Sherwood News',               'rss', 'global',
   '{"url":"https://sherwood.news/feed"}',                                                              3600),
+-- ============== Added 2026-05-28: user-sourced (TLDR AI cites) ==============
+-- Lenny's Newsletter: product/AI-practitioner newsletter (the "How I AI"
+-- series, etc.). Broad PM content but heavy recent AI coverage; the importance
+-- gate filters non-AI items. RSS verified 2026-05-28 (daily cadence, fresh).
+('lennys-newsletter',      'Lenny''s Newsletter',         'rss', 'global',
+  '{"url":"https://www.lennysnewsletter.com/feed"}',                                                   7200),
+-- Biohub: AI-for-biology research institute (protein world-models, etc.). RSS
+-- verified 2026-05-28. NOTE: mostly wet-lab biology — only the occasional AI/ML
+-- item clears the importance gate; kept at default weight (1.0).
+('biohub',                 'Biohub',                      'rss', 'global',
+  '{"url":"https://biohub.org/feed"}',                                                                 7200),
 
 -- TLDR-audit adds (RSS live-tested 2026-05-24, all <20d fresh).
 ('epoch-ai',               'Epoch AI',                    'rss', 'global',
@@ -358,6 +369,17 @@ insert into sources (slug, name, kind, region, config, poll_interval_sec) values
     "date_selector":"time[class*=\"date\"]",
     "url_prefix":"https://www.anthropic.com",
     "max_items":50}',                                                                                3600),
+-- Anthropic Engineering: first-party eng blog. The /engineering index is a
+-- DIFFERENT layout from /news & /research (ArticleList cards, not
+-- PublicationList), so it needs its own selectors — live-tested 2026-05-28
+-- (25 items, clean <h2> titles + /engineering/<slug> URLs). No per-item date
+-- in the static markup, so published_at stays null (kept as unknown-age).
+('anthropic-engineering-crawled', 'Anthropic Engineering (first-party)', 'crawler', 'global',
+  '{"base_url":"https://www.anthropic.com/engineering",
+    "item_selector":"a[href^=\"/engineering/\"]",
+    "title_selector":"h2",
+    "url_prefix":"https://www.anthropic.com",
+    "max_items":40}',                                                                                3600),
 ('cerebras-crawled',           'Cerebras Blog (first-party)',      'crawler', 'global',
   '{"base_url":"https://www.cerebras.ai/blog",
     "item_selector":"a.flex.md\\:flex-col.to-md\\:gap-6",
@@ -376,6 +398,25 @@ insert into sources (slug, name, kind, region, config, poll_interval_sec) values
     "date_attr":"datetime",
     "url_prefix":"https://cursor.com",
     "max_items":30}',                                                                                3600),
+-- ElevenLabs: server-rendered blog index — selectors live-tested 2026-05-28
+-- (47 items, clean anchor-text titles + /blog/<slug> URLs; the /blog/category/
+-- nav links are excluded). No per-item date in the markup, so published_at
+-- stays null (kept as unknown-age). No JS needed.
+('elevenlabs-crawled',         'ElevenLabs Blog (first-party)',    'crawler', 'global',
+  '{"base_url":"https://elevenlabs.io/blog",
+    "item_selector":"a[href^=\"/blog/\"]:not([href*=\"/category/\"])",
+    "url_prefix":"https://elevenlabs.io",
+    "max_items":30}',                                                                                3600),
+-- Cognition (Devin): server-rendered blog index — selectors live-tested
+-- 2026-05-28 (64 items, clean <h2> titles, MM.DD.YY dates that parse, and
+-- /blog/<slug> URLs). No JS needed.
+('cognition-crawled',          'Cognition Blog (first-party)',     'crawler', 'global',
+  '{"base_url":"https://cognition.ai/blog",
+    "item_selector":"a.group.grid-cols-7",
+    "title_selector":"h2",
+    "date_selector":"span.font-mono",
+    "url_prefix":"https://cognition.ai",
+    "max_items":30}',                                                                                3600),
 
 -- ============== Crawler — STUB (DISABLED below) ==============
 -- RSS broken or page reachable but selectors not yet validated.
@@ -391,8 +432,6 @@ insert into sources (slug, name, kind, region, config, poll_interval_sec) values
   '{"base_url":"https://lightning.ai/blog/"}',                                                       7200),
 ('stanford-hai-crawled',      'Stanford HAI (crawl)',       'crawler', 'global',
   '{"base_url":"https://hai.stanford.edu/news"}',                                                    21600),
-('anthropic-engineering-crawled', 'Anthropic Engineering (first-party)', 'crawler', 'global',
-  '{"base_url":"https://www.anthropic.com/engineering"}',                                            3600),
 ('claude-com-blog-crawled',   'Claude.com Product Blog (crawl)', 'crawler', 'global',
   '{"base_url":"https://claude.com/blog"}',                                                          3600),
 -- Need Playwright (JS-rendered SPAs / anti-bot 403s).
@@ -516,7 +555,7 @@ update sources set enabled = false where slug in (
 update sources set enabled = false where slug in (
   'ai21-blog-crawled', 'langchain-crawled', 'pinecone-crawled',
   'anyscale-crawled', 'lightning-ai-crawled', 'stanford-hai-crawled',
-  'anthropic-engineering-crawled', 'claude-com-blog-crawled',
+  'claude-com-blog-crawled',
   'xai-blog-crawled', 'inflection-blog-crawled', 'cohere-blog-crawled',
   'perplexity-crawled'
 );
@@ -574,7 +613,9 @@ update sources set reputation_weight = 1.4 where slug in (
   'pytorch-blog', 'spotify-engineering', 'meta-engineering', 'vercel-blog',
   -- 2026-05-24: first-party AI coding-tool blog + first-party eng blog,
   -- AI compute/scaling research org, and a frontier model lab (crawled).
-  'cursor-blog-crawled', 'dropbox-tech', 'epoch-ai', 'stability-crawled'
+  'cursor-blog-crawled', 'dropbox-tech', 'epoch-ai', 'stability-crawled',
+  -- 2026-05-28: first-party labs/eng blogs (crawled).
+  'elevenlabs-crawled', 'cognition-crawled', 'anthropic-engineering-crawled'
 );
 
 update sources set reputation_weight = 1.2 where slug in (

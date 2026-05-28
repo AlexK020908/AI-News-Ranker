@@ -36,6 +36,11 @@ export interface StoryBucket {
   avg_importance: number | null;
   max_importance: number | null;
   trending_score: number;
+  // Listwise re-rank output (Stage 3). rerank_rank is 1-based (1 = most
+  // important); both are null for solo items and topics not in the latest
+  // rerank pass. The loader honors rerank_rank only while reranked_at is fresh.
+  rerank_rank?: number | null;
+  reranked_at?: string | null;
   last_updated_at: string;
   members: StoryMember[];
   // Engagement metrics — collected for display + analytics only.

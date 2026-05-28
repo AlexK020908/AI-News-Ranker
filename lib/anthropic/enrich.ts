@@ -6,7 +6,7 @@ import {
 } from "./prompts";
 import { CATEGORIES, type Category } from "@/lib/types";
 import { extractJsonBlock } from "@/lib/utils";
-import { normalizeSubScores, type SubScores } from "./scoring";
+import { normalizeSubScores, normalizeTier, type ImportanceTier, type SubScores } from "./scoring";
 
 export interface EnrichInput {
   sourceName: string;
@@ -22,6 +22,9 @@ export interface EnrichResult {
   summary: string;
   category: Category;
   tags: string[];
+  // Coarse importance class from Claude — the backbone of the 0-100 importance
+  // computed downstream. Always a valid tier (normalizeTier fills a default).
+  tier: ImportanceTier;
   // Raw 1-5 ordinal axis ratings from Claude. The final 0-100 importance is
   // computed in the enrich route by combineImportance() because it needs row
   // signals (engagement_score, source.reputation_weight, paper citations)
@@ -62,16 +65,18 @@ export async function enrichItem(input: EnrichInput): Promise<EnrichResult> {
   const cavemanRaw = typeof parsed.caveman_summary === "string"
     ? parsed.caveman_summary.trim()
     : "";
+  const subScores = normalizeSubScores({
+    novelty: parsed.novelty,
+    impact: parsed.impact,
+    credibility: parsed.credibility,
+    actionability: parsed.actionability,
+  });
   return {
     summary: parsed.summary,
     category,
     tags: normalizeTags(parsed.tags),
-    subScores: normalizeSubScores({
-      novelty: parsed.novelty,
-      impact: parsed.impact,
-      credibility: parsed.credibility,
-      actionability: parsed.actionability,
-    }),
+    tier: normalizeTier(parsed.tier, subScores),
+    subScores,
     caveman_summary: category === "paper" && cavemanRaw.length > 0
       ? cavemanRaw.slice(0, 320)
       : null,

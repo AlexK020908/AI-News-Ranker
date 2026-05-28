@@ -14,6 +14,7 @@ import {
 import { postToDiscord } from "@/lib/webhooks";
 import { sendEmail, buildDigestEmail } from "@/lib/email";
 import { extractJsonBlock, runPool } from "@/lib/utils";
+import { DIGEST_MIN_IMPORTANCE } from "@/lib/anthropic/scoring";
 import { SITE_URL } from "@/lib/site";
 import type { Category } from "@/lib/types";
 
@@ -26,7 +27,7 @@ export const dynamic = "force-dynamic";
 // (period_start, period_end) tuple — the unique constraint then makes
 // duplicate generation a no-op.
 const PERIOD_HOURS = 24;
-const MIN_IMPORTANCE = 60;
+const MIN_IMPORTANCE = DIGEST_MIN_IMPORTANCE;
 const MAX_ITEMS_FOR_PROMPT = 50;
 // trending_items has no time filter, so it can return items days old.
 // We over-fetch and then post-filter to items whose published_at OR

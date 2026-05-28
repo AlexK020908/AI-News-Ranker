@@ -11,6 +11,10 @@ export interface StackSource {
   text?: string;           // optional avatar text color override (for very light bg)
   headline: string;        // this outlet's headline
   hoursAgo: number;        // computed from published_at
+  // True when this member came from a Twitter/X account source. Tweets almost
+  // never carry an og-image, so the thumbnail would otherwise be a bare
+  // gradient — RotatingThumb renders an X logo watermark instead.
+  isX?: boolean;
   thumb: {
     hue: number;
     label: string;

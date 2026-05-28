@@ -5,6 +5,7 @@
     { "path": "/api/jobs/enrich",         "schedule": "*/5 * * * *"  },
     { "path": "/api/jobs/notify",         "schedule": "*/5 * * * *"  },
     { "path": "/api/jobs/topics",         "schedule": "*/30 * * * *" },
-    { "path": "/api/jobs/cluster-topics", "schedule": "15 * * * *"   }
+    { "path": "/api/jobs/cluster-topics", "schedule": "15 * * * *"   },
+    { "path": "/api/jobs/rerank",         "schedule": "25 * * * *"   }
   ]
 }

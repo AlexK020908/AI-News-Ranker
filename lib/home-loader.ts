@@ -13,6 +13,10 @@ import type { RisingStandalone } from "@/lib/stack/rising-transform";
 import type { TrendingRepoCard } from "@/lib/stack/trending-repo-transform";
 
 const MAX_TOPICS = 240;
+// How long a listwise rerank (Stage 3) stays authoritative. The rerank job runs
+// hourly; past this window a rank is treated as stale and the bucket falls back
+// to trending_score order, so a skipped/failed pass degrades gracefully.
+const RERANK_FRESH_HOURS = 3;
 const SOLO_DAYS = 7;
 const SOLO_MAX = 200;
 const SOLO_MIN_IMPORTANCE = 25;
@@ -75,8 +79,46 @@ export async function loadHomeData(): Promise<HomeData> {
     clicks_1h: 0,
   }));
 
-  const merged = [...buckets, ...soloBuckets]
-    .sort((a, b) => b.trending_score - a.trending_score)
+  // Ordering: stories with a FRESH listwise rerank lead the page in the model's
+  // comparative order (rerank_rank asc). Everything else — solo items and topics
+  // not in the latest rerank pass — follows by trending_score. This is the
+  // Stage-3 payoff: relative judgment (reliable) over isolated per-item scores.
+  //
+  // Guard: only TOPICS with >=2 members are rerank candidates, so a hot solo
+  // item never gets a rank. Without a check it would be pinned below every
+  // reranked cluster regardless of how strongly it's trending. So a non-reranked
+  // bucket whose trending_score beats the strongest reranked story is allowed to
+  // float above the reranked block — the safety valve for a genuinely huge solo
+  // the editor pass never saw. freshRank is computed ONCE per bucket here (not
+  // per comparison) so the sort doesn't re-parse reranked_at O(n log n) times.
+  const rerankCutoff = Date.now() - RERANK_FRESH_HOURS * 3_600_000;
+  const freshRankOf = (b: StoryBucket): number | null => {
+    if (b.rerank_rank == null || !b.reranked_at) return null;
+    const ts = Date.parse(b.reranked_at);
+    if (Number.isNaN(ts) || ts < rerankCutoff) return null;
+    return b.rerank_rank;
+  };
+  const decorated = [...buckets, ...soloBuckets].map((b) => ({
+    b,
+    rank: freshRankOf(b),
+  }));
+  const maxRerankTrending = decorated.reduce(
+    (m, d) => (d.rank != null && d.b.trending_score > m ? d.b.trending_score : m),
+    Number.NEGATIVE_INFINITY,
+  );
+  const merged = decorated
+    .sort((x, y) => {
+      if (x.rank != null && y.rank != null) return x.rank - y.rank;
+      if (x.rank != null) {
+        // x reranked, y not: y wins only if it out-trends the whole rerank set.
+        return y.b.trending_score > maxRerankTrending ? 1 : -1;
+      }
+      if (y.rank != null) {
+        return x.b.trending_score > maxRerankTrending ? -1 : 1;
+      }
+      return y.b.trending_score - x.b.trending_score;
+    })
+    .map((d) => d.b)
     .slice(0, MAX_TOPICS);
 
   const clusterMemberIds = new Set<string>();

@@ -3,6 +3,7 @@ import type { StackCluster, StackSource } from "./types";
 import { avatarFor, defaultThumbFor, hueFor } from "./sources";
 import { topicForCluster } from "./topics";
 import { getStorage } from "@/lib/storage/s3";
+import { BREAKING_IMPORTANCE } from "@/lib/anthropic/scoring";
 
 const WORDS_PER_MIN = 220;
 const SUMMARY_MAX_CHARS = 180;
@@ -104,6 +105,7 @@ function memberToSource(m: StoryMember): StackSource {
     text: avatar.text,
     headline,
     hoursAgo: hoursAgoFrom(m.published_at),
+    isX: m.source_kind === "twitter",
     thumb: {
       hue: hueFor(displaySlug),
       label: thumbLabel(m),
@@ -146,7 +148,7 @@ export function clusterFromBucket(b: StoryBucket, risingIds?: ReadonlySet<string
     summary: truncateSentence(b.topic_summary ?? "", SUMMARY_MAX_CHARS),
     hoursAgo: hoursAgoFrom(newestIso),
     readMin: estimateReadMin(b.topic_summary),
-    breaking: (b.max_importance ?? 0) >= 92,
+    breaking: (b.max_importance ?? 0) >= BREAKING_IMPORTANCE,
     rising,
     sources,
     cavemanSummary,

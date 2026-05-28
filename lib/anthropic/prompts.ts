@@ -5,6 +5,7 @@ For each item, output STRICT JSON matching this schema — no prose, no markdown
   "summary": string,         // 2-3 sentences, <= 320 chars. Plain English. State what it IS and why it matters. Never start with "This article" or similar filler.
   "category": string,        // one of: paper | model | release | repo | funding | announcement | discussion | tool | news | other
   "tags": string[],          // 2-5 short lowercase tags (e.g., ["llm","reasoning","anthropic"])
+  "tier": string,            // one of: breaking | notable | routine | minor — see TIER below. This is the PRIMARY importance signal.
   "novelty": number,         // integer 1-5, see SCORING AXES below
   "impact": number,          // integer 1-5
   "credibility": number,     // integer 1-5
@@ -55,6 +56,23 @@ Common misclassifications to avoid:
 
 "announcement" should be RARE. If you find yourself reaching for it, re-check the tree above first.
 
+TIER — the single most important field. Classify the item's importance to a frontier-AI audience into exactly one of four levels. This is a CLASSIFICATION, not a number: pick the level whose description fits best. The downstream score is anchored on the tier, so getting this right matters far more than fine-tuning the 1-5 axes.
+
+  breaking — field-defining. The kind of thing that dominates AI discussion for days. Frontier model launch (GPT-5, Claude/Gemini flagship), a clear capability breakthrough, a landmark paper everyone will cite, a mega funding round / major acquisition, or a major safety/policy event. RARE — most days have zero.
+  notable — meaningful and worth a builder/researcher's attention. A solid new model or product release, a well-evidenced paper with real results, a significant funding round, a widely-useful new repo/tool, or important reporting. The ceiling for most genuinely good items.
+  routine — incremental or narrow. Minor version bumps, decent-but-niche papers, standard industry news, typical trending repos, ordinary commentary. The bulk of the feed.
+  minor — low signal. Rehashes, tutorials of known material, marketing fluff, listicles, tangential or barely-AI items.
+
+  Tier calibration examples:
+    - "Anthropic releases Claude Opus 5, tops every benchmark" → breaking
+    - "OpenAI raises $40B at $300B valuation" → breaking
+    - "New paper: a simple trick cuts LLM inference cost 4x, with code" → notable
+    - "Mistral ships a 12B multilingual model, open weights" → notable
+    - "LangChain 0.3.7 patch release" → routine
+    - "Our team's reflections on prompt engineering in 2026" → routine
+    - "10 ChatGPT prompts to boost productivity" → minor
+  When torn between two tiers, ask: "will people still be talking about this next week?" Yes → the higher tier.
+
 SCORING AXES — rate each on an integer 1-5. Be willing to use the full range. Most items are NOT a 3 on every axis; if you feel yourself defaulting to 3s, pick the axis you have the strongest opinion about and move it. The four axes are scored INDEPENDENTLY — an unreleased theoretical breakthrough can be high novelty + high impact + low actionability, and that's correct.
 
 novelty — how new is the idea, approach, or result?
@@ -85,7 +103,15 @@ actionability — can a reader USE this today?
   4: usable open model, repo, SDK, or product launched today
   5: flagship release that's immediately deployable at scale (API, polished tool, weights you can run now)
 
-DO NOT inflate axes for enthusiasm. A "cool" paper with no code is still actionability 1-2. A polished marketing rehash is still novelty 1.
+AXIS CALIBRATION — worked examples so the numbers mean the same thing every run:
+  - Frontier model launch with API + weights: novelty 4, impact 5, credibility 5, actionability 5.
+  - arXiv paper, strong results, no code released: novelty 4, impact 3, credibility 4, actionability 2.
+  - Incremental benchmark bump from a known lab, with repo: novelty 3, impact 3, credibility 4, actionability 4.
+  - Popular new open-source agent framework (trending repo): novelty 3, impact 3, credibility 3, actionability 5.
+  - Opinion/commentary post restating known ideas: novelty 1, impact 2, credibility 3, actionability 1.
+  - Vendor blog announcing a minor feature: novelty 2, impact 2, credibility 3, actionability 4.
+
+DO NOT inflate axes for enthusiasm. A "cool" paper with no code is still actionability 1-2. A polished marketing rehash is still novelty 1. The tier and the axes should agree in spirit — a "breaking" item with all-2 axes, or a "minor" item with all-5 axes, almost always means you mis-tiered; re-check.
 
 For title/content that looks like academic paper, category MUST be "paper".
 For items from github_trending / github_search sources, category is usually "repo" unless it's clearly a paper-with-code or model.`;
@@ -94,6 +120,9 @@ export interface EnrichmentOutput {
   summary: string;
   category: string;
   tags: string[];
+  // Coarse importance class — the primary ranking signal. Soft-validated by
+  // normalizeTier(); a missing/invalid value is inferred from the axis mean.
+  tier?: string;
   novelty: number;
   impact: number;
   credibility: number;
