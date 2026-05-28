@@ -28,13 +28,17 @@ export interface HomeData {
   clusters: StackCluster[];
   risingSingletons: RisingStandalone[];
   trendingRepos: TrendingRepoCard[];
+  // ISO timestamp of the freshest story on the page — emitted as the homepage's
+  // schema.org dateModified so search engines date the snippet to real content
+  // freshness instead of their last crawl. Render time when the feed is empty.
+  lastModified: string;
 }
 
 export async function loadHomeData(): Promise<HomeData> {
   const region = DEFAULT_REGION;
 
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
-    return { clusters: [], risingSingletons: [], trendingRepos: [] };
+    return { clusters: [], risingSingletons: [], trendingRepos: [], lastModified: new Date().toISOString() };
   }
 
   const supabase = await createSupabaseServerClient();
@@ -135,5 +139,16 @@ export async function loadHomeData(): Promise<HomeData> {
     .filter((r) => !clusterMemberIds.has(r.id))
     .map(trendingRepoToCard);
 
-  return { clusters, risingSingletons, trendingRepos: trendingRepoCards };
+  // Freshest member publish time across the page → homepage dateModified.
+  let freshestMs = 0;
+  for (const b of merged) {
+    for (const m of b.members) {
+      const t = m.published_at ? Date.parse(m.published_at) : 0;
+      if (t > freshestMs) freshestMs = t;
+    }
+  }
+  const lastModified =
+    freshestMs > 0 ? new Date(freshestMs).toISOString() : new Date().toISOString();
+
+  return { clusters, risingSingletons, trendingRepos: trendingRepoCards, lastModified };
 }
