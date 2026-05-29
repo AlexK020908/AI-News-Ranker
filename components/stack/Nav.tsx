@@ -100,7 +100,7 @@ export function Nav({
           <svg width="13" height="13" viewBox="0 0 14 14" fill="none" aria-hidden="true">
             <path d="M1 1l5.2 6.6L1.3 13H2.6l4.3-4.7L10.5 13H13L7.5 6.1 12.7 1h-1.3L7.4 5.4 4 1H1z" fill="currentColor" />
           </svg>
-          X
+          <span className="nav__link-label">X</span>
         </Link>
         <Link
           href="/repos"
@@ -111,7 +111,7 @@ export function Nav({
             <path d="M3 1h6l3 3v9H3z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
             <path d="M9 1v3h3" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
           </svg>
-          Repos
+          <span className="nav__link-label">Repos</span>
         </Link>
 
         <div className="nav__actions">

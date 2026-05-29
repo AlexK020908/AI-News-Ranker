@@ -1625,6 +1625,12 @@ button:disabled { cursor: not-allowed; }
   .brand__logo--full { display: none; }
   .brand__logo--mark { display: block; }
 
+  /* Drop the X / Repos text labels to icon-only — the X glyph and the
+     doc icon already identify them. Frees ~80px so the row stops feeling
+     shoulder-to-shoulder and the pill rail gets real breathing room. */
+  .nav__link-label { display: none; }
+  .nav__link { padding: 7px 8px; gap: 0; }
+
   .briefing__greet { font-size: 20px; }
   .briefing__stats b { font-size: 16px; }
 
