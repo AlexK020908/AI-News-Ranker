@@ -6,6 +6,7 @@ import Link from "next/link";
 import { ChevronLeft, Flame, TrendingUp } from "lucide-react";
 import { formatDistanceToNowStrict } from "date-fns";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getCache, cacheKeys, ttl } from "@/lib/cache/redis";
 import { ItemCard } from "@/components/item-card";
 import type { ItemWithSource, TopicSummary } from "@/lib/types";
 import { truncate } from "@/lib/utils";
@@ -19,19 +20,33 @@ interface TopicRow extends TopicSummary {
   last_updated_at: string;
 }
 
-const loadTopic = cache(async (slug: string): Promise<TopicRow | null> => {
-  if (!/^[a-z0-9-]{1,80}$/i.test(slug)) return null;
-  const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase
-    .from("topics")
-    .select(
-      `id, slug, label, summary, member_count, avg_importance, max_importance,
-       trending_score, first_seen_at, last_updated_at`,
-    )
-    .eq("slug", slug)
-    .maybeSingle();
-  if (error || !data) return null;
-  return data as TopicRow;
+interface TopicBundle {
+  topic: TopicRow;
+  items: ItemWithSource[];
+}
+
+const SLUG_RE = /^[a-z0-9-]{1,80}$/i;
+
+// React cache() dedupes within one render (generateMetadata + page body);
+// Redis cache.remember dedupes across requests so repeat views of the same
+// topic skip the topics lookup AND the topic_members join for ttl.topic seconds.
+const loadTopicBundle = cache((slug: string): Promise<TopicBundle | null> => {
+  if (!SLUG_RE.test(slug)) return Promise.resolve(null);
+  return getCache().remember<TopicBundle | null>(cacheKeys.topic(slug), ttl.topic, async () => {
+    const supabase = await createSupabaseServerClient();
+    const { data, error } = await supabase
+      .from("topics")
+      .select(
+        `id, slug, label, summary, member_count, avg_importance, max_importance,
+         trending_score, first_seen_at, last_updated_at`,
+      )
+      .eq("slug", slug)
+      .maybeSingle();
+    if (error || !data) return null;
+    const topic = data as TopicRow;
+    const items = await loadMembers(supabase, topic.id);
+    return { topic, items };
+  });
 });
 
 export async function generateMetadata({
@@ -40,8 +55,9 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
   const { slug } = await params;
-  const topic = await loadTopic(slug);
-  if (!topic) return { title: `Topic not found — ${SITE_NAME}` };
+  const bundle = await loadTopicBundle(slug);
+  if (!bundle) return { title: `Topic not found — ${SITE_NAME}` };
+  const { topic } = bundle;
   const title = `${topic.label} — ${SITE_NAME}`;
   const description = topic.summary ? truncate(topic.summary, 180) : undefined;
   return {
@@ -58,11 +74,9 @@ export default async function TopicDetail({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const topic = await loadTopic(slug);
-  if (!topic) notFound();
-
-  const supabase = await createSupabaseServerClient();
-  const items = await loadMembers(supabase, topic.id);
+  const bundle = await loadTopicBundle(slug);
+  if (!bundle) notFound();
+  const { topic, items } = bundle;
 
   const lastUpdated = formatDistanceToNowStrict(new Date(topic.last_updated_at), {
     addSuffix: true,

@@ -180,6 +180,12 @@ export const cacheKeys = {
   topTopics(region: string, max: number) {
     return `${KEY_VERSION}:toptopics:${region}:${max}`;
   },
+  item(id: string) {
+    return `${KEY_VERSION}:item:${id}`;
+  },
+  topic(slug: string) {
+    return `${KEY_VERSION}:topic:${slug}`;
+  },
   sources() {
     return `${KEY_VERSION}:sources`;
   },
@@ -189,16 +195,27 @@ export const cacheKeys = {
 };
 
 // Common TTLs (seconds). Short enough that staleness is bounded, long enough
-// to absorb crawler bursts.
+// to absorb crawler bursts. The homepage values were 60s, but the ingest/
+// rerank pipeline only produces new data every ~10min (cron) / 15min (worker),
+// so a 60s TTL forced a Postgres reload every minute to show data that hadn't
+// changed — most of the keyspace_misses. 300s keeps staleness well under the
+// data-refresh cadence while cutting reloads ~5x.
 export const ttl = {
   feed: 30,
-  stories: 60,
+  stories: 300,
   topTopics: 60,
   sources: 300,
   // Same TTL as stories so cluster-member-IDs vs rising-IDs stay in sync —
   // mismatched freshness was the source of false flame badges and
   // duplicate items in the singleton-rising strip.
-  rising: 60,
-  trendingRepos: 120,
-  solo: 60,
+  rising: 300,
+  trendingRepos: 300,
+  solo: 300,
+  // Per-ID detail pages (SEO landing surfaces). These bypassed Redis entirely
+  // and re-ran every query — including the similar_recent_items vector RPC —
+  // on every pageview, so they scaled linearly with traffic. An article's
+  // related/member set barely changes, so a few minutes of caching collapses
+  // repeat views to one DB hit per TTL.
+  item: 300,
+  topic: 300,
 };

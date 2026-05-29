@@ -6,6 +6,7 @@ import Link from "next/link";
 import { ArrowUpRight, ChevronLeft } from "lucide-react";
 import { formatDistanceToNowStrict } from "date-fns";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getCache, cacheKeys, ttl } from "@/lib/cache/redis";
 import { importanceTier } from "@/components/item-card";
 import { CATEGORY_LABELS, type Category, type SourceKind } from "@/lib/types";
 import { cn, truncate } from "@/lib/utils";
@@ -53,20 +54,46 @@ interface CollapsedRow {
   source: { slug: string; name: string };
 }
 
-const loadItem = cache(async (id: string): Promise<DetailRow | null> => {
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return null;
-  const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase
-    .from("items")
-    .select(
-      `id, title, url, author, content, summary, category, tags, importance,
-       embedding, duplicate_of, published_at, ingested_at, enriched_at,
-       source:sources!inner(slug, name, kind)`,
-    )
-    .eq("id", id)
-    .maybeSingle();
-  if (error || !data) return null;
-  return data as unknown as DetailRow;
+// The cached payload drops `embedding` — it's only needed transiently to seed
+// loadRelated, and caching ~1500 floats per item would bloat Redis for nothing.
+type CachedItem = Omit<DetailRow, "embedding">;
+interface ItemBundle {
+  item: CachedItem;
+  related: RelatedRow[];
+  collapsed: CollapsedRow[];
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Two layers: React cache() dedupes the call within a single render
+// (generateMetadata + the page body share one bundle); Redis cache.remember
+// dedupes across requests so repeat views of the same article skip Postgres
+// AND the similar_recent_items vector RPC for ttl.item seconds. Unenriched or
+// missing items return null and are NOT cached, so an item shows up the moment
+// the worker finishes enriching it (no stale not-found pinned for a full TTL).
+const loadItemBundle = cache((id: string): Promise<ItemBundle | null> => {
+  if (!UUID_RE.test(id)) return Promise.resolve(null);
+  return getCache().remember<ItemBundle | null>(cacheKeys.item(id), ttl.item, async () => {
+    const supabase = await createSupabaseServerClient();
+    const { data, error } = await supabase
+      .from("items")
+      .select(
+        `id, title, url, author, content, summary, category, tags, importance,
+         embedding, duplicate_of, published_at, ingested_at, enriched_at,
+         source:sources!inner(slug, name, kind)`,
+      )
+      .eq("id", id)
+      .maybeSingle();
+    if (error || !data) return null;
+    const row = data as unknown as DetailRow;
+    if (!row.enriched_at) return null;
+    const { embedding, ...item } = row;
+    const [related, collapsed] = await Promise.all([
+      loadRelated(supabase, row.id, embedding),
+      loadCollapsed(supabase, row.id),
+    ]);
+    return { item, related, collapsed };
+  });
 });
 
 export async function generateMetadata({
@@ -75,8 +102,9 @@ export async function generateMetadata({
   params: Promise<{ id: string }>;
 }): Promise<Metadata> {
   const { id } = await params;
-  const item = await loadItem(id);
-  if (!item) return { title: `Not found — ${SITE_NAME}` };
+  const bundle = await loadItemBundle(id);
+  if (!bundle) return { title: `Not found — ${SITE_NAME}` };
+  const { item } = bundle;
   const title = `${item.title} — ${SITE_NAME}`;
   const description = item.summary ? truncate(item.summary, 180) : undefined;
   return {
@@ -93,14 +121,9 @@ export default async function ItemDetail({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const item = await loadItem(id);
-  if (!item || !item.enriched_at) notFound();
-
-  const supabase = await createSupabaseServerClient();
-  const [related, collapsed] = await Promise.all([
-    loadRelated(supabase, item.id, item.embedding),
-    loadCollapsed(supabase, item.id),
-  ]);
+  const bundle = await loadItemBundle(id);
+  if (!bundle) notFound();
+  const { item, related, collapsed } = bundle;
 
   const imp = importanceTier(item.importance ?? 0);
   const when = new Date(item.published_at ?? item.ingested_at);
