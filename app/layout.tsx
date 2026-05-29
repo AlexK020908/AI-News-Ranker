@@ -82,7 +82,11 @@ export default function RootLayout({
 
   return (
     <html lang="en" className={jetbrains.variable} data-theme="dark">
-      <body>
+      {/* Browser extensions (Grammarly, etc.) inject attributes like
+          data-gr-ext-installed onto <body> before React hydrates, which trips
+          a benign hydration-mismatch warning. suppressHydrationWarning scopes
+          the opt-out to this one element. */}
+      <body suppressHydrationWarning>
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{
