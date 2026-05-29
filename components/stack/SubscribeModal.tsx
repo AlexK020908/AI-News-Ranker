@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { sendGAEvent } from "@next/third-parties/google";
 import { CATEGORIES, CATEGORY_LABELS, type Category } from "@/lib/types";
 
 interface Props {
@@ -79,6 +80,10 @@ export function SubscribeModal({ onClose }: Props) {
           setError(json.error || `request failed (${res.status})`);
           return;
         }
+        // GA4 conversion: form submitted successfully (double opt-in still
+        // pending — the confirmed-subscribe event fires on the confirm link).
+        // sendGAEvent no-ops when <GoogleAnalytics> isn't mounted (no GA id).
+        sendGAEvent("event", "subscribe", { channel: "email", mode });
         setStatus("ok-email");
       } else {
         const res = await fetch("/api/webhooks/register", {
@@ -99,6 +104,7 @@ export function SubscribeModal({ onClose }: Props) {
           setError(json.error || `request failed (${res.status})`);
           return;
         }
+        sendGAEvent("event", "subscribe", { channel: "discord", mode: "alerts" });
         setDiscordSuccess({ unsubscribe_url: json.unsubscribe_url });
         setStatus("ok-discord");
       }

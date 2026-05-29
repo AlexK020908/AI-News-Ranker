@@ -50,10 +50,30 @@ export async function GET(req: NextRequest) {
   return renderHtml(
     `You're subscribed as <b>${escape(data.email ?? "")}</b>. The next briefing lands tomorrow morning UTC.`,
     200,
+    { trackConfirmed: true },
   );
 }
 
-function renderHtml(message: string, status: number): Response {
+// GA4 snippet for the standalone confirm page. This route returns raw HTML
+// outside the React tree, so the <GoogleAnalytics> component in app/layout
+// isn't present here — we inline gtag on the fresh-confirmation path only.
+// Gated on a valid NEXT_PUBLIC_GA_ID (env is trusted, but the regex keeps
+// anything unexpected out of the inline <script>). subscribe_confirmed is the
+// TRUE conversion (vs. the "subscribe" submit event), so a funnel can measure
+// the confirm-through rate.
+function gaConfirmSnippet(): string {
+  const gaId = process.env.NEXT_PUBLIC_GA_ID;
+  if (!gaId || !/^G-[A-Z0-9]+$/.test(gaId)) return "";
+  return `<script async src="https://www.googletagmanager.com/gtag/js?id=${gaId}"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','${gaId}');gtag('event','subscribe_confirmed',{channel:'email'});</script>`;
+}
+
+function renderHtml(
+  message: string,
+  status: number,
+  opts: { trackConfirmed?: boolean } = {},
+): Response {
+  const gaBlock = opts.trackConfirmed ? gaConfirmSnippet() : "";
   const body = `<!doctype html><html><head><meta charset="utf-8"><title>StackBrief</title>
 <style>
 body{background:#0a0a0c;color:#ececef;font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',sans-serif;display:grid;place-items:center;min-height:100vh;margin:0;padding:24px;}
@@ -68,7 +88,7 @@ a{color:#f5a73c;}
 <h1>Subscription</h1>
 <p>${message}</p>
 <p><a href="/">← back to the feed</a></p>
-</main></body></html>`;
+</main>${gaBlock}</body></html>`;
   return new Response(body, {
     status,
     headers: { "content-type": "text/html; charset=utf-8" },

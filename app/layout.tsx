@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { JetBrains_Mono } from "next/font/google";
+import { GoogleAnalytics } from "@next/third-parties/google";
 import "./globals.css";
 import {
   SITE_URL,
@@ -90,6 +91,12 @@ export default function RootLayout({
         />
         {children}
       </body>
+      {/* GA4 via the official Next integration (loads gtag.js after hydration).
+          Gated on the env var so it's a no-op until a measurement ID is set —
+          local/dev and preview deploys stay untracked unless configured. */}
+      {process.env.NEXT_PUBLIC_GA_ID && (
+        <GoogleAnalytics gaId={process.env.NEXT_PUBLIC_GA_ID} />
+      )}
     </html>
   );
 }
