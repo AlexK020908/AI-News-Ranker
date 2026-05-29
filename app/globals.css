@@ -201,6 +201,11 @@ button:disabled { cursor: not-allowed; }
   gap: 2px;
   overflow-x: auto;
   flex: 1;
+  /* Without this, the flex item's default min-width:auto pins the rail to its
+     full intrinsic content width — it never shrinks, so the whole nav (and
+     thus the page) overflows the viewport and scrolls horizontally on phones.
+     min-width:0 lets the rail shrink and scroll internally instead. */
+  min-width: 0;
   scrollbar-width: none;
   mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
 }
