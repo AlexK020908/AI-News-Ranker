@@ -12,12 +12,10 @@ interface Props {
 
 export function BriefingHeader({ clusters, visibleCount, topic, scrollY }: Props) {
   const now = new Date();
+  // Display-only "today" greeting. Kept as a plain <span> (not a machine-readable
+  // <time>) on purpose: we don't want to feed Google a date that turns into a
+  // "N days ago" snippet stamp. See the no-dateModified note in app/page.tsx.
   const dateStr = now.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
-  // Machine-readable date for search engines. A single semantic <time> that
-  // agrees with the JSON-LD dateModified is the strongest "this page is fresh"
-  // signal — far clearer than the ~hundreds of relative "Nd ago" strings on the
-  // cards below. Built from the same local `now` so it always matches dateStr.
-  const dateISO = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
   const topicLabel = STACK_TOPICS.find((t) => t.id === topic)?.label || "All";
   const totalSources = clusters.reduce((acc, c) => acc + c.sources.length, 0);
   const totalRead = clusters.reduce((acc, c) => acc + c.readMin, 0);
@@ -34,7 +32,7 @@ export function BriefingHeader({ clusters, visibleCount, topic, scrollY }: Props
       <div>
         <h1 className="briefing__greet">Your brief</h1>
         <div className="briefing__meta">
-          <time dateTime={dateISO}>{dateStr}</time>
+          <span>{dateStr}</span>
           <span className="cluster__head__sep">·</span>
           <span>Showing <b>{topicLabel}</b></span>
         </div>

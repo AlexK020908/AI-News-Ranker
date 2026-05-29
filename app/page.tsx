@@ -6,14 +6,13 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export default async function Home() {
-  const { clusters, risingSingletons, trendingRepos, lastModified } =
-    await loadHomeData();
+  const { clusters, risingSingletons, trendingRepos } = await loadHomeData();
 
-  // Freshness signal for search engines. Google otherwise dates the snippet to
-  // its last crawl ("4 days ago"), which reads as stale on a daily feed.
-  // lastModified is the freshest story's publish time (computed in the loader,
-  // not here, to keep this render pure). WebPage is linked into the WebSite/
-  // Organization @graph declared in app/layout.tsx via matching @ids.
+  // Intentionally NO dateModified/datePublished here. This is an evergreen daily
+  // feed; emitting a date made Google show a "N days ago" stamp in the result
+  // snippet, which we don't want. Omitting all date fields is the strongest
+  // signal for Google to treat the page as dateless. WebPage is linked into the
+  // WebSite/Organization @graph declared in app/layout.tsx via matching @ids.
   const jsonLd = {
     "@context": "https://schema.org",
     "@type": "WebPage",
@@ -23,7 +22,6 @@ export default async function Home() {
     isPartOf: { "@id": `${SITE_URL}/#website` },
     about: { "@id": `${SITE_URL}/#organization` },
     publisher: { "@id": `${SITE_URL}/#organization` },
-    dateModified: lastModified,
   };
 
   return (
