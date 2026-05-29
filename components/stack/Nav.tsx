@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { isCategory, type Category } from "@/lib/types";
 import { STACK_TOPICS } from "@/lib/stack/topics";
 import { TopicFilterDropdown } from "./TopicFilterDropdown";
+import { Logo, LogoMark } from "./Logo";
 
 interface Props {
   // Only used on the home page; ignored on dedicated routes.
@@ -49,14 +50,14 @@ export function Nav({
     <nav className={`nav${scrolled ? " scrolled" : ""}`}>
       <div className="nav__inner">
         {isBriefing ? (
-          <div className="brand" onClick={onLogo}>
-            <span className="brand__mark">SB</span>
-            <span className="brand__name">StackBrief<span className="brand__dot">.</span></span>
+          <div className="brand" onClick={onLogo} aria-label="stackbrief.tech">
+            <Logo className="brand__logo brand__logo--full" />
+            <LogoMark className="brand__logo brand__logo--mark" />
           </div>
         ) : (
-          <Link href="/" className="brand">
-            <span className="brand__mark">SB</span>
-            <span className="brand__name">StackBrief<span className="brand__dot">.</span></span>
+          <Link href="/" className="brand" aria-label="stackbrief.tech">
+            <Logo className="brand__logo brand__logo--full" />
+            <LogoMark className="brand__logo brand__logo--mark" />
           </Link>
         )}
 
