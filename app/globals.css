@@ -286,6 +286,9 @@ button:disabled { cursor: not-allowed; }
   color: var(--text);
 }
 .nav__link svg { opacity: 0.85; }
+/* Nudge the destination group (X / Repos) right, away from the masked edge
+   of the scrollable pill rail, so the whole nav reads as distinct zones. */
+.nav__pills + .nav__link { margin-left: 12px; }
 
 /* ============ Topic filter dropdown ============ */
 .topic-filter { position: relative; display: inline-block; }
