@@ -16,6 +16,25 @@ const nextConfig: NextConfig = {
       "./node_modules/playwright-core/**/*",
     ],
   },
+  // Serve the OG banner (public/og.png, referenced from app/layout.tsx metadata)
+  // with a long immutable cache. headers() are checked before the filesystem, so
+  // this reliably overrides the default static Cache-Control for /public assets —
+  // giving social scrapers a fast, cacheable 200 instead of re-fetching the bare
+  // EC2 origin on every unfurl. See the note in app/layout.tsx for the full
+  // rationale (and the rule to version the filename when the banner changes).
+  async headers() {
+    return [
+      {
+        source: "/og.png",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, max-age=31536000, immutable",
+          },
+        ],
+      },
+    ];
+  },
 };
 
 export default nextConfig;

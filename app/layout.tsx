@@ -25,17 +25,32 @@ export const metadata: Metadata = {
   description: SITE_DESCRIPTION,
   applicationName: SITE_NAME,
   alternates: { canonical: "/" },
+  // The banner is referenced explicitly from /public (see public/og.png) rather
+  // than via the app/opengraph-image.png file convention. The convention image
+  // inherited the root segment's `force-dynamic` config and was therefore served
+  // `Cache-Control: max-age=0, must-revalidate`, forcing every social scraper to
+  // re-fetch it from the EC2 origin on each unfurl. With no CDN in front, a single
+  // slow/cold fetch made scrapers cache a *blank* card against that specific URL —
+  // why some share links (e.g. /?cluster=...) showed no banner while the bare URL
+  // did. A /public asset is filesystem-served, immune to the segment config, and
+  // gets an immutable Cache-Control via next.config.ts headers(). Same banner,
+  // reliably, on every shareable link. NOTE: the URL is stable, so if you replace
+  // the banner, bump the filename (og-2.png) to bust scraper/browser caches.
   openGraph: {
     type: "website",
     siteName: SITE_NAME,
     url: "/",
     title: SITE_TITLE,
     description: SITE_DESCRIPTION,
+    images: [
+      { url: "/og.png", width: 1200, height: 630, alt: SITE_TITLE },
+    ],
   },
   twitter: {
     card: "summary_large_image",
     title: SITE_TITLE,
     description: SITE_DESCRIPTION,
+    images: [{ url: "/og.png", width: 1200, height: 630, alt: SITE_TITLE }],
   },
 };
 

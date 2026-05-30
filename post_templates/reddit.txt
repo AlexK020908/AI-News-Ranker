@@ -1,0 +1,19 @@
+Title: 
+I built a daily AI feed that clusters the same story across sources so you read it once — looking for feedback
+
+
+Body: 
+I was tired of seeing the same AI announcement 6 times across Twitter, HN, arXiv, and newsletters. So I built https://stackbrief.tech/ — it pulls from papers, model releases, GitHub repos, and news, then clusters duplicate coverage into one item and ranks by importance. No login, just open it.
+
+What it does:
+
+- Clusters the same story across multiple sources → one entry, not ten
+- Sections for paper summarizations, models, trending repos
+- Daily twitter briefs across AI discussions
+- Importance-based ranking (tries to surface what actually matters, not just what's loudest)
+- Daily email briefs
+- Item pings for discord webhooks
+
+I would love some feedback! Or be mean to me I don't care :3
+
+And yes it's free!!!
