@@ -63,7 +63,12 @@ export function StackApp({
   const [accent] = useState("#f5a73c");
   const [topic, setTopic] = useState(defaultTopic);
   const [detailId, setDetailId] = useState<string | null>(null);
-  const fromPopState = useRef(false);
+  // Scroll position of the feed at the moment a card was opened, so we can
+  // drop the user back exactly where they were when they close the detail.
+  const homeScrollRef = useRef(0);
+  // Previous detailId, used to tell "opening" from "closing" in the scroll
+  // effect below (so we scroll-to-top on open, restore-position on close).
+  const prevDetailId = useRef<string | null>(null);
   const [showOnb, setShowOnb] = useState(false);
   const [showSub, setShowSub] = useState(false);
   // Multi-select category subset for the "All" view. Default = every
@@ -134,7 +139,6 @@ export function StackApp({
   // Handle browser back/forward to sync topic + cluster state with URL
   useEffect(() => {
     const handler = () => {
-      fromPopState.current = true;
       const path = window.location.pathname.slice(1);
       if (path && isStackTopicId(path)) {
         setTopic(path);
@@ -145,6 +149,9 @@ export function StackApp({
       const slug = params.get("cluster");
       if (slug) {
         const match = clusters.find((c) => c.slug === slug);
+        // Forward-navigating into a card from the feed: remember the feed
+        // position so a subsequent "back" restores it.
+        if (!prevDetailId.current) homeScrollRef.current = window.scrollY;
         setDetailId(match?.id ?? null);
       } else {
         setDetailId(null);
@@ -157,6 +164,9 @@ export function StackApp({
   const openCluster = useCallback(
     (id: string) => {
       const cluster = clusters.find((c) => c.id === id);
+      // Snapshot the feed scroll position before opening so closing the
+      // detail can restore it instead of dumping the user at the top.
+      homeScrollRef.current = window.scrollY;
       setDetailId(id);
       if (cluster) {
         const url = new URL(window.location.href);
@@ -235,13 +245,20 @@ export function StackApp({
 
   const detail = detailId ? clusters.find((c) => c.id === detailId) : null;
 
-  useEffect(() => {
+  // Scroll handling across the feed <-> detail transition. Opening a card
+  // jumps to the top of the detail; closing it restores the exact feed
+  // position the user left from (captured in openCluster / the popstate
+  // handler). useLayoutEffect runs before paint so there's no flash of the
+  // feed at the top before it snaps back to the saved offset.
+  useBrowserLayoutEffect(() => {
     if (typeof window === "undefined") return;
-    if (fromPopState.current) {
-      fromPopState.current = false;
-      return;
+    const prev = prevDetailId.current;
+    prevDetailId.current = detailId;
+    if (detailId && !prev) {
+      window.scrollTo({ top: 0, behavior: "instant" });
+    } else if (!detailId && prev) {
+      window.scrollTo({ top: homeScrollRef.current, behavior: "instant" });
     }
-    window.scrollTo({ top: 0, behavior: "instant" });
   }, [detailId]);
 
   const handleSetTopic = (id: string) => {
