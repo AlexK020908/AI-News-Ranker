@@ -1,9 +1,26 @@
 import type { StoryBucket, StoryMember } from "@/lib/stories";
+import type { Category } from "@/lib/types";
 import type { StackCluster, StackSource } from "./types";
 import { avatarFor, defaultThumbFor, hueFor } from "./sources";
 import { topicForCluster } from "./topics";
 import { getStorage } from "@/lib/storage/s3";
 import { BREAKING_IMPORTANCE } from "@/lib/anthropic/scoring";
+
+// "Primary" members are the artifact itself — the paper, the repo that
+// implements it, the model weights, or the first-party release. Everything
+// else (news write-ups, HN/forum discussion, funding/announcement coverage)
+// is reporting ABOUT the artifact. We surface primaries first so a reader
+// reaches the source before the commentary.
+const PRIMARY_CATEGORIES: ReadonlySet<Category> = new Set<Category>([
+  "paper",
+  "repo",
+  "model",
+  "release",
+]);
+
+function roleFor(category: Category | null): "primary" | "coverage" {
+  return category && PRIMARY_CATEGORIES.has(category) ? "primary" : "coverage";
+}
 
 const WORDS_PER_MIN = 220;
 const SUMMARY_MAX_CHARS = 180;
@@ -112,11 +129,17 @@ function memberToSource(m: StoryMember): StackSource {
       imageUrl: resolveImageUrl(m),
     },
     cavemanSummary: m.caveman_summary ?? null,
+    role: roleFor(m.category),
   };
 }
 
 export function clusterFromBucket(b: StoryBucket, risingIds?: ReadonlySet<string>): StackCluster {
-  const sources = b.members.map(memberToSource);
+  // story_buckets returns members importance-desc. Stably reorder so primary
+  // sources (the artifact) lead the coverage — Array.prototype.sort is stable,
+  // so importance order is preserved within each role group.
+  const sources = b.members
+    .map(memberToSource)
+    .sort((a, c) => (a.role === c.role ? 0 : a.role === "primary" ? -1 : 1));
   // Use the freshest member time as the cluster's hoursAgo — last_updated_at
   // reflects when the cluster row itself was touched by the job, which isn't
   // what a reader wants to see.

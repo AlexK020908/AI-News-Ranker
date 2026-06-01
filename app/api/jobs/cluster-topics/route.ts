@@ -10,6 +10,7 @@ import {
   type Cluster,
 } from "@/lib/topics/cluster";
 import { labelCluster, slugify } from "@/lib/topics/label";
+import { buildLinkEdges } from "@/lib/topics/links";
 import { runPool } from "@/lib/utils";
 import { HIGH_IMPACT_MEMBER_IMPORTANCE } from "@/lib/anthropic/scoring";
 import { twitterSourceIds, pgInList } from "@/lib/twitter-sources";
@@ -76,6 +77,10 @@ interface ItemRow {
   category: string | null;
   published_at: string | null;
   ingested_at: string;
+  // url + raw drive deterministic paper↔repo / same-arXiv-ID linking
+  // (buildLinkEdges). They aren't used by the embedding math.
+  url: string;
+  raw: Record<string, unknown> | null;
   // pgvector columns come back from the Supabase JS client as their text
   // serialization ('[0.01,0.02,...]'), not as a JS array. parseVector() below
   // accepts either form so the cluster math works regardless.
@@ -137,7 +142,7 @@ export async function GET(req: NextRequest) {
   }
   let itemsQuery = supabase
     .from("items")
-    .select("id, title, summary, importance, category, published_at, ingested_at, embedding")
+    .select("id, title, summary, importance, category, published_at, ingested_at, url, raw, embedding")
     .not("enriched_at", "is", null)
     .is("duplicate_of", null)
     .not("embedding", "is", null)
@@ -158,11 +163,21 @@ export async function GET(req: NextRequest) {
     })
     .filter((x): x is { id: string; embedding: number[]; importance: number | null } => x !== null);
 
+  // Deterministic edges: a paper and the repo that implements it, or the same
+  // arXiv ID ingested from two sources. These often don't clear the cosine
+  // threshold, so we force-union them. Built over the same item set so any
+  // referenced id is guaranteed present in clusterInputs.
+  const mustLink = buildLinkEdges(
+    items.map((it) => ({ id: it.id, url: it.url, raw: it.raw })),
+  );
+
   // Pass 1 — tight clustering across ALL items at 0.72. Catches same-story
-  // multi-outlet coverage regardless of category.
+  // multi-outlet coverage regardless of category. mustLink seeds the
+  // paper↔repo / same-arXiv-ID edges before the similarity pass.
   const rawClusters = clusterByEmbedding(clusterInputs, {
     threshold: CLUSTER_THRESHOLD,
     min_size: PAPER_MIN_CLUSTER_SIZE,
+    mustLink,
   });
 
   // Pass 2 — loose THEMATIC clustering over papers only, at 0.62. Catches

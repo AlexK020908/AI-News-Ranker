@@ -28,6 +28,12 @@ export interface ClusterOptions {
   threshold?: number; // cosine similarity to draw an edge (default 0.78)
   min_size?: number;  // minimum cluster size to emit (default 3)
   max_size?: number;  // truncate over-broad clusters (safety rail, default 40)
+  // Deterministic edges to force-union regardless of cosine similarity. Each
+  // pair is two item ids known to belong together from a hard identifier (e.g.
+  // a paper and the GitHub repo that implements it, or the same arXiv ID
+  // ingested from two sources). Pairs referencing ids not present in `items`
+  // are ignored. See lib/topics/links.ts.
+  mustLink?: ReadonlyArray<readonly [string, string]>;
 }
 
 const DEFAULTS = { threshold: 0.78, min_size: 3, max_size: 40 } as const;
@@ -58,6 +64,21 @@ export function clusterByEmbedding(
     const ra = find(a);
     const rb = find(b);
     if (ra !== rb) parent[ra] = rb;
+  }
+
+  // Seed deterministic edges first. A paper and its implementing repo (or the
+  // same arXiv ID from two sources) often DON'T clear the cosine threshold —
+  // an abstract and a README read differently — so we union them outright
+  // before the similarity pass. Items with a zero norm (no usable embedding)
+  // are still linked: the edge is identity-based, not geometric.
+  if (opts.mustLink && opts.mustLink.length > 0) {
+    const indexById = new Map<string, number>();
+    for (let i = 0; i < n; i++) indexById.set(items[i].id, i);
+    for (const [a, b] of opts.mustLink) {
+      const ia = indexById.get(a);
+      const ib = indexById.get(b);
+      if (ia !== undefined && ib !== undefined && ia !== ib) union(ia, ib);
+    }
   }
 
   // Pairwise is O(n^2). For the 48h window (typically <2000 items), fine.

@@ -144,19 +144,38 @@ export function ClusterCard({ cluster, variant, onOpen, index, unit = "outlet" }
         )}
       </div>
 
-      {expanded && variant !== "row" && (
-        <div className="expanded">
-          <div className="expanded__head">All coverage · {cluster.sources.length} sources</div>
-          {cluster.sources.map((s, i) => (
-            <a className="src-row" key={i} href={s.url} target="_blank" rel="noopener noreferrer">
-              <SourceAvatar source={s} />
-              <div className="src-row__src">{s.name}</div>
-              <div className="src-row__head">{s.headline}</div>
-              <div className="src-row__time">{hoursAgoLabel(s.hoursAgo)}</div>
-            </a>
-          ))}
-        </div>
-      )}
+      {expanded && variant !== "row" && (() => {
+        const primary = cluster.sources.filter((s) => s.role === "primary");
+        const coverage = cluster.sources.filter((s) => s.role !== "primary");
+        const srcRow = (s: StackSource, key: number) => (
+          <a className="src-row" key={key} href={s.url} target="_blank" rel="noopener noreferrer">
+            <SourceAvatar source={s} />
+            <div className="src-row__src">{s.name}</div>
+            <div className="src-row__head">{s.headline}</div>
+            <div className="src-row__time">{hoursAgoLabel(s.hoursAgo)}</div>
+          </a>
+        );
+        // Only split into labeled groups when the story actually has both an
+        // artifact and reporting about it. Single-type clusters (e.g. the /x
+        // section, or all-news stories) keep the original flat "All coverage"
+        // list so nothing regresses.
+        if (primary.length > 0 && coverage.length > 0) {
+          return (
+            <div className="expanded">
+              <div className="expanded__head">Primary {plural(primary.length, "source")} · {primary.length}</div>
+              {primary.map((s, i) => srcRow(s, i))}
+              <div className="expanded__head">Coverage &amp; discussion · {coverage.length}</div>
+              {coverage.map((s, i) => srcRow(s, primary.length + i))}
+            </div>
+          );
+        }
+        return (
+          <div className="expanded">
+            <div className="expanded__head">All coverage · {cluster.sources.length} sources</div>
+            {cluster.sources.map((s, i) => srcRow(s, i))}
+          </div>
+        );
+      })()}
 
       {hover && <SourcePreview source={hover.source} x={hover.x} y={hover.y} />}
     </article>

@@ -25,6 +25,10 @@ export interface StackSource {
   };
   // Plain-English paper explanation. Only populated for paper-category items.
   cavemanSummary?: string | null;
+  // Role within the story: "primary" for the artifact itself (paper, repo,
+  // model, release), "coverage" for reporting/discussion about it. Drives the
+  // primary-first ordering and the grouped headings in the expanded panel.
+  role: "primary" | "coverage";
 }
 
 export interface StackCluster {
