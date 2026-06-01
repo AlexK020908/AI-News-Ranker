@@ -32,6 +32,13 @@ on:
   push:
     branches: main
 
+# Defense-in-depth: the GITHUB_TOKEN here needs nothing beyond reading the
+# repo for `actions/checkout`. The deploy writes to the host via sudo/rsync,
+# not via the token — so scope it down to read-only. (Repo default is already
+# read; this pins it at the workflow level so a settings change can't widen it.)
+permissions:
+  contents: read
+
 jobs:
   setup:
     runs-on: self-hosted
