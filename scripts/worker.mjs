@@ -49,11 +49,16 @@ const ENDPOINTS = [
   // from the article topics above. Cheap relative to cluster-topics (far fewer
   // items) and safe to run every tick — unchanged clusters skip re-labeling.
   { name: "cluster-tweets", path: "/api/jobs/cluster-tweets", timeoutMs: 120_000 },
-  // "On X today" synthesis brief for the /x page. Self-rate-limited (regenerates
-  // at most every few hours), so calling it each tick is cheap — it no-ops until
-  // its interval rolls.
+  // Daily briefs + email all self-gate to once per ET day in the morning (see
+  // lib/schedule.ts), so calling them every tick is cheap — they no-op until the
+  // send window. Order matters: news-brief and x-brief must run BEFORE digest in
+  // the same tick, because digest composes the email from whatever briefs exist.
+  // "What's going on in AI Space" — ranked news brief for /brief + the email.
+  { name: "news-brief",     path: "/api/jobs/news-brief",     timeoutMs: 120_000 },
+  // "On X today" synthesis brief for /x + the email's X section.
   { name: "x-brief",        path: "/api/jobs/x-brief",        timeoutMs: 120_000 },
   { name: "notify",         path: "/api/jobs/notify",         timeoutMs: 60_000  },
+  // Daily 5pm-ET email: composes the two briefs above, no LLM call of its own.
   { name: "digest",         path: "/api/jobs/digest",         timeoutMs: 120_000 },
 ];
 

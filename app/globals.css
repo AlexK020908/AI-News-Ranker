@@ -1681,6 +1681,49 @@ button:disabled { cursor: not-allowed; }
 }
 .x-brief__p strong { color: var(--text); font-weight: 600; }
 
+/* Ranked "What's going on in AI Space" list on /brief. */
+.news-brief__list {
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: brief;
+}
+.news-brief__topic {
+  counter-increment: brief;
+  position: relative;
+  padding: 0 0 14px 30px;
+  margin: 0 0 14px;
+  border-bottom: 1px solid var(--border);
+}
+.news-brief__list > .news-brief__topic:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+.news-brief__topic::before {
+  content: counter(brief);
+  position: absolute;
+  left: 0;
+  top: 0;
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+}
+.news-brief__title {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  line-height: 1.4;
+}
+.news-brief__bullets {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+.news-brief__bullets li {
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--text-2);
+  margin: 0 0 3px;
+}
+
 /* Inline citation chips inside the brief (Google-AI-Overview style). */
 .cite { font-size: 11px; line-height: 0; margin-left: 1px; vertical-align: super; }
 .cite a, .cite__btn {

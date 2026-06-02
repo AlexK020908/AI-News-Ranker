@@ -4,6 +4,7 @@ import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { isAuthorizedJob } from "@/lib/job-auth";
 import { getAnthropic } from "@/lib/anthropic/client";
 import { extractJsonBlock } from "@/lib/utils";
+import { etDayWindow, BRIEF_HOUR_ET } from "@/lib/schedule";
 import { twitterSourceIds } from "@/lib/twitter-sources";
 import {
   X_BRIEF_MODEL,
@@ -20,9 +21,6 @@ export const maxDuration = 120;
 export const dynamic = "force-dynamic";
 
 const WINDOW_HOURS = 24;
-// Regenerate at most this often — a brief is a synthesis, not a live view, and
-// each generation is a Sonnet call. ?force=1 bypasses for manual runs.
-const INTERVAL_HOURS = 3;
 const MAX_CLUSTERS = 12;        // cite-able clusters
 const MAX_SOLO = 15;            // standout individual posts
 const MEMBERS_PER_CLUSTER = 6;  // member posts carried into a cluster citation
@@ -67,26 +65,29 @@ export async function GET(req: NextRequest) {
   }
 
   const force = new URL(req.url).searchParams.get("force") === "1";
+  const win = etDayWindow();
 
-  // Cadence guard: skip if a brief was generated within INTERVAL_HOURS. Fail
-  // SAFE — on a read error or unparseable timestamp, skip (don't regenerate),
-  // so a transient blip or bad row can't make us re-spend on Sonnet every tick.
+  // Cadence: generate once per ET day in the morning (force=1 bypasses for
+  // manual runs). The brief is a daily synthesis, not a live view, and each
+  // generation is a Sonnet call — gating to once/day is the token saving. Fail
+  // SAFE on a read error (skip, don't regenerate) so a transient blip can't
+  // re-spend every tick.
   if (!force) {
-    const { data: latest, error: latestErr } = await supabase
+    if (!win.isAfterBriefHour) {
+      return Response.json({ ok: true, skipped: true, reason: `before ${BRIEF_HOUR_ET}:00 ET`, hour_et: win.hourET });
+    }
+    const { data: today, error: latestErr } = await supabase
       .from("briefs")
-      .select("generated_at")
+      .select("id")
       .eq("surface", "x")
-      .order("generated_at", { ascending: false })
+      .gte("generated_at", win.etMidnightUtc)
       .limit(1)
       .maybeSingle();
     if (latestErr) {
       return Response.json({ ok: true, skipped: true, reason: `brief lookup failed: ${latestErr.message}` });
     }
-    if (latest) {
-      const ts = Date.parse(latest.generated_at);
-      if (!Number.isFinite(ts) || Date.now() - ts < INTERVAL_HOURS * 3600 * 1000) {
-        return Response.json({ ok: true, skipped: true, reason: "recent brief exists" });
-      }
+    if (today) {
+      return Response.json({ ok: true, skipped: true, reason: "brief already generated today (ET)" });
     }
   }
 

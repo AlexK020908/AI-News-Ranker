@@ -513,7 +513,10 @@ insert into sources (slug, name, kind, region, config, poll_interval_sec) values
 -- rather than a separate yc-oss adapter — same pipeline, zero extra machinery.
 ('x-ycombinator',   'Y Combinator (X)',      'twitter', 'global', '{"userName":"ycombinator"}',     7200),
 ('x-garrytan',      'Garry Tan (X)',         'twitter', 'global', '{"userName":"garrytan"}',        7200),
-('x-warpdotdev',    'Warp (X)',              'twitter', 'global', '{"userName":"warpdotdev"}',      7200)
+('x-warpdotdev',    'Warp (X)',              'twitter', 'global', '{"userName":"warpdotdev"}',      7200),
+-- Analysis / benchmarks (2h) — added 2026-06-02 from threadreaderapp links.
+('x-artificialanalysis', 'Artificial Analysis (X)', 'twitter', 'global', '{"userName":"ArtificialAnlys"}', 7200),
+('x-scaling01',          'Lisan al Gaib (X)',       'twitter', 'global', '{"userName":"scaling01"}',       7200)
 on conflict (slug) do update set
   name              = excluded.name,
   kind              = excluded.kind,
@@ -657,7 +660,7 @@ update sources set reputation_weight = 1.4 where slug in (
 );
 update sources set reputation_weight = 1.2 where slug in (
   'x-swyx', 'x-simonw', 'x-emollick', 'x-hardmaru', 'x-teknium', 'x-abacaj', 'x-rasbt',
-  'x-ycombinator', 'x-garrytan'
+  'x-ycombinator', 'x-garrytan', 'x-artificialanalysis', 'x-scaling01'
 );
 update sources set reputation_weight = 0.8 where slug in (
   'x-rowancheung', 'x-therundownai', 'x-bensbites', 'x-minchoi'

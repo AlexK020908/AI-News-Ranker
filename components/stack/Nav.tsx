@@ -45,6 +45,7 @@ export function Nav({
   const isBriefing = isHome || isCategoryRoute;
   const isRepos = pathname === "/repos";
   const isX = pathname === "/x";
+  const isBrief = pathname === "/brief";
 
   return (
     <nav className={`nav${scrolled ? " scrolled" : ""}`}>
@@ -92,6 +93,17 @@ export function Nav({
 
         {/* Destinations (not filters) live outside the scrollable pill rail so
             the mask gradient never clips them. */}
+        <Link
+          href="/brief"
+          className={`nav__link${isBrief ? " is-active" : ""}`}
+          aria-current={isBrief ? "page" : undefined}
+        >
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+            <path d="M2.5 1.5h9v11h-9z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+            <path d="M4.5 4.5h5M4.5 7h5M4.5 9.5h3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+          </svg>
+          <span className="nav__link-label">Brief</span>
+        </Link>
         <Link
           href="/x"
           className={`nav__link${isX ? " is-active" : ""}`}

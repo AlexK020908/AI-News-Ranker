@@ -1,62 +1,27 @@
 import type { NextRequest } from "next/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { isAuthorizedJob } from "@/lib/job-auth";
-import { getAnthropic } from "@/lib/anthropic/client";
-import {
-  DIGEST_MODEL,
-  DIGEST_SYSTEM_PROMPT,
-  buildDigestUserMessage,
-  renderDigestMarkdown,
-  isDigestSections,
-  type DigestItemInput,
-  type DigestSections,
-} from "@/lib/anthropic/digest-prompt";
 import { postToDiscord } from "@/lib/webhooks";
-import { sendEmail, buildDigestEmail } from "@/lib/email";
-import { extractJsonBlock, runPool } from "@/lib/utils";
-import { DIGEST_MIN_IMPORTANCE } from "@/lib/anthropic/scoring";
+import { sendEmail, buildDailyBriefEmail } from "@/lib/email";
+import { runPool } from "@/lib/utils";
 import { SITE_URL } from "@/lib/site";
-import type { Category } from "@/lib/types";
+import { etDayWindow, BRIEF_HOUR_ET } from "@/lib/schedule";
+import { isNewsBriefSections, type NewsBriefSections } from "@/lib/anthropic/news-brief-prompt";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
 export const dynamic = "force-dynamic";
 
-// 24-hour briefing window. Periods are aligned to midnight UTC so a loop
-// firing every 15 minutes inside the same UTC day all map onto the same
-// (period_start, period_end) tuple — the unique constraint then makes
-// duplicate generation a no-op.
-const PERIOD_HOURS = 24;
-const MIN_IMPORTANCE = DIGEST_MIN_IMPORTANCE;
-const MAX_ITEMS_FOR_PROMPT = 50;
-// trending_items has no time filter, so it can return items days old.
-// We over-fetch and then post-filter to items whose published_at OR
-// ingested_at falls inside the period — guaranteeing the LLM only sees
-// items the system prompt's "last 24 hours" claim is actually true for.
-const TRENDING_OVERFETCH = 200;
+// The daily email is now a COMPOSER, not a generator. It runs once per ET day
+// in the morning and stitches together the two briefs that the news-brief and
+// x-brief jobs produced earlier in the same worker tick — no LLM call of its own. The
+// email leads with the ranked "What's going on in AI Space" list and follows
+// with the "What's being talked about in X" prose. Per-item instant alerts are
+// a separate path (see /api/jobs/notify) and are untouched.
+
 const DISCORD_CHUNK_LIMIT = 1900;     // Discord message body cap is 2000 — leave headroom.
 const DISCORD_INTERCHUNK_MS = 350;    // ~3 messages/s, well under Discord's per-webhook rate limit.
-
-interface TrendingItemRow {
-  id: string;
-  source_id: string;
-  url: string;
-  title: string;
-  summary: string | null;
-  category: Category | null;
-  importance: number | null;
-  duplicate_count: number;
-  paper_tldr: string | null;
-  paper_influential_citations: number | null;
-  published_at: string | null;
-  ingested_at: string;
-  trending_score: number;
-}
-
-interface SourceRow {
-  id: string;
-  name: string;
-}
 
 interface DigestWebhookRow {
   id: string;
@@ -67,12 +32,23 @@ interface DigestWebhookRow {
   confirmed_at: string | null;
 }
 
+interface BriefCitation {
+  label: string;
+  posts: { url: string; handle: string }[];
+}
+
+interface BriefRow {
+  markdown: string;
+  sections: unknown;
+  citations: Record<string, BriefCitation> | null;
+}
+
 export async function GET(req: NextRequest) {
   if (!isAuthorizedJob(req)) {
     return Response.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  let supabase;
+  let supabase: SupabaseClient;
   try {
     supabase = createSupabaseServiceClient();
   } catch (e) {
@@ -81,17 +57,38 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = new URL(req.url);
   const force = searchParams.get("force") === "1";
-  // ?force=1 regenerates an existing digest; by default it does NOT
-  // re-push to subscribers (avoid spamming on a typo-fix rerun). Operators
-  // can opt back in with ?force=1&push=1.
+  // ?force=1 re-sends; by default a forced run does NOT re-push to subscribers
+  // (avoid spamming on a rerun). Operators opt back in with ?force=1&push=1.
   const allowPush = !force || searchParams.get("push") === "1";
-  const period = currentPeriod();
+  const win = etDayWindow();
 
-  // Atomic claim: insert a placeholder row with onConflict-ignore. If we
-  // get a row back, we won the race and proceed. If we get nothing back,
-  // another worker (or a previous successful tick) already has this
-  // period — bail without burning an Anthropic call. The unique
-  // constraint on (period_start, period_end) is what makes this safe.
+  // Gate: don't send before the morning send hour (ET).
+  if (!force && !win.isAfterBriefHour) {
+    return Response.json({ ok: true, skipped: true, reason: `before ${BRIEF_HOUR_ET}:00 ET`, hour_et: win.hourET });
+  }
+
+  // Pull today's briefs (generated earlier this tick). Check BEFORE claiming the
+  // digest period — if neither brief is ready yet (e.g. both jobs skipped this
+  // tick), we want a later tick to still be able to send, so we must not burn
+  // the once-per-day claim here.
+  const [newsBrief, xBrief] = await Promise.all([
+    loadTodayBrief(supabase, "news", win.etMidnightUtc),
+    loadTodayBrief(supabase, "x", win.etMidnightUtc),
+  ]);
+  if (!newsBrief && !xBrief) {
+    return Response.json({ ok: true, skipped: true, reason: "no briefs generated today yet" });
+  }
+
+  const newsSections: NewsBriefSections | null =
+    newsBrief && isNewsBriefSections(newsBrief.sections) ? newsBrief.sections : null;
+  // Combined markdown — stored on the digest row and pushed to Discord subs.
+  const combinedMarkdown = [newsBrief?.markdown, xBrief?.markdown]
+    .filter((m): m is string => !!m && m.trim().length > 0)
+    .join("\n\n");
+  const itemCount = newsSections?.topics.length ?? 0;
+
+  // Atomic once-per-ET-day claim on (period_start, period_end). The unique
+  // constraint makes a duplicate insert a no-op; winning the claim = we send.
   let claimedId: string | null = null;
   let claimedExisted = false;
   if (!force) {
@@ -99,11 +96,11 @@ export async function GET(req: NextRequest) {
       .from("digests")
       .upsert(
         {
-          period_start: period.start,
-          period_end: period.end,
-          markdown: "(generating)",
-          sections: { _generating: true } as Record<string, unknown>,
-          item_count: 0,
+          period_start: win.periodStart,
+          period_end: win.periodEnd,
+          markdown: combinedMarkdown,
+          sections: { news: newsSections } as Record<string, unknown>,
+          item_count: itemCount,
         },
         { onConflict: "period_start,period_end", ignoreDuplicates: true },
       )
@@ -112,148 +109,56 @@ export async function GET(req: NextRequest) {
       return Response.json({ error: `claim: ${claimErr.message}` }, { status: 500 });
     }
     if (!claimed || claimed.length === 0) {
-      // Another worker won the race, OR a digest already exists.
       const { data: existing } = await supabase
         .from("digests")
         .select("id, generated_at")
-        .eq("period_start", period.start)
-        .eq("period_end", period.end)
+        .eq("period_start", win.periodStart)
+        .eq("period_end", win.periodEnd)
         .maybeSingle();
       return Response.json({
         ok: true,
         skipped: true,
-        reason: "digest already claimed for period",
+        reason: "email already sent for today (ET)",
         digest_id: existing?.id ?? null,
         generated_at: existing?.generated_at ?? null,
       });
     }
     claimedId = claimed[0].id;
   } else {
-    // force=1 path: look up existing id (if any) so we update in place.
     const { data: existing } = await supabase
       .from("digests")
       .select("id")
-      .eq("period_start", period.start)
-      .eq("period_end", period.end)
+      .eq("period_start", win.periodStart)
+      .eq("period_end", win.periodEnd)
       .maybeSingle();
     claimedId = existing?.id ?? null;
     claimedExisted = !!existing;
   }
 
-  // Pull top items via trending_items. The SQL function has no time
-  // filter so we over-fetch and post-filter to the period below — that
-  // way the system prompt's "last 24 hours" claim is actually true.
-  const { data: trending, error: tErr } = await supabase.rpc("trending_items", {
-    min_importance: MIN_IMPORTANCE,
-    cat: null,
-    source_kinds: null,
-    max_rows: TRENDING_OVERFETCH,
-  });
-  if (tErr) {
-    return Response.json({ error: `trending_items: ${tErr.message}` }, { status: 500 });
-  }
-
-  const allRows = (trending ?? []) as TrendingItemRow[];
-  // Keep only items whose published_at falls in [period.start, period.end).
-  // For items with null published_at, fall back to ingested_at — the
-  // RSS adapter can produce items with no published timestamp but the
-  // ingest tick stamps every row.
-  const periodStartMs = Date.parse(period.start);
-  const periodEndMs = Date.parse(period.end);
-  const rows = allRows
-    .filter((r) => {
-      const stamp = r.published_at ?? r.ingested_at;
-      if (!stamp) return false;
-      const t = Date.parse(stamp);
-      return Number.isFinite(t) && t >= periodStartMs && t < periodEndMs;
-    })
-    .slice(0, MAX_ITEMS_FOR_PROMPT);
-
-  if (rows.length === 0) {
-    return Response.json({
-      ok: true,
-      skipped: true,
-      reason: "no items above importance threshold in 24h window",
-      candidates: allRows.length,
-    });
-  }
-
-  // Resolve source names in a single follow-up query. trending_items doesn't
-  // join sources so we look them up here rather than touch the RPC.
-  const sourceIds = Array.from(
-    new Set(rows.map((r) => r.source_id).filter(Boolean)),
-  );
-  let sourceById = new Map<string, string>();
-  if (sourceIds.length > 0) {
-    const { data: srcs } = await supabase
-      .from("sources")
-      .select("id, name")
-      .in("id", sourceIds);
-    sourceById = new Map(((srcs ?? []) as SourceRow[]).map((s) => [s.id, s.name]));
-  }
-
-  const promptItems: DigestItemInput[] = rows
-    .filter((r) => r.title && r.title.length > 0)
-    .slice(0, MAX_ITEMS_FOR_PROMPT)
-    .map((r) => ({
-      title: r.title,
-      url: r.url,
-      summary: r.summary,
-      category: r.category,
-      importance: r.importance,
-      duplicate_count: r.duplicate_count,
-      paper_tldr: r.paper_tldr,
-      paper_influential_citations: r.paper_influential_citations,
-      published_at: r.published_at,
-      source_name: sourceById.get(r.source_id) ?? "unknown",
-    }));
-
-  let sections: DigestSections;
-  try {
-    sections = await generateDigest(promptItems, period);
-  } catch (e) {
-    return Response.json(
-      { error: `digest generation failed: ${(e as Error).message}` },
-      { status: 500 },
-    );
-  }
-
-  const markdown = renderDigestMarkdown(sections, period, promptItems.length);
-
   const updatePayload = {
-    markdown,
-    sections: sections as unknown as Record<string, unknown>,
-    item_count: promptItems.length,
+    markdown: combinedMarkdown,
+    sections: { news: newsSections } as Record<string, unknown>,
+    item_count: itemCount,
     generated_at: new Date().toISOString(),
   };
 
-  let stored: { id: string; generated_at: string } | null = null;
+  let stored: { id: string } | null = null;
   if (claimedId) {
-    // Update the row we claimed (or, in force=1 mode, the existing row).
     const { data, error: updErr } = await supabase
       .from("digests")
       .update(updatePayload)
       .eq("id", claimedId)
-      .select("id, generated_at")
+      .select("id")
       .single();
-    if (updErr) {
-      return Response.json({ error: `store digest: ${updErr.message}` }, { status: 500 });
-    }
+    if (updErr) return Response.json({ error: `store digest: ${updErr.message}` }, { status: 500 });
     stored = data;
   } else {
-    // force=1 with no pre-existing row — insert fresh.
     const { data, error: insErr } = await supabase
       .from("digests")
-      .insert({
-        period_start: period.start,
-        period_end: period.end,
-        ...updatePayload,
-      })
-      .select("id, generated_at")
+      .insert({ period_start: win.periodStart, period_end: win.periodEnd, ...updatePayload })
+      .select("id")
       .single();
-    if (insErr) {
-      return Response.json({ error: `store digest: ${insErr.message}` }, { status: 500 });
-    }
+    if (insErr) return Response.json({ error: `store digest: ${insErr.message}` }, { status: 500 });
     stored = data;
   }
 
@@ -261,48 +166,33 @@ export async function GET(req: NextRequest) {
     return Response.json({
       ok: true,
       digest_id: stored.id,
-      period_start: period.start,
-      period_end: period.end,
-      item_count: promptItems.length,
+      et_day: win.etDay,
+      item_count: itemCount,
       regenerated: claimedExisted,
       pushed: 0,
       push_skipped_reason: "force=1 without push=1",
     });
   }
 
-  // Push to digest-subscribed channels (Discord + confirmed email).
-  // Item-level webhook subscribers are NOT touched — they get the
-  // existing notify route.
+  // Push to digest-subscribed channels (Discord + confirmed email). Item-level
+  // webhook subscribers are NOT touched — they get the notify route.
   const { data: subsRaw, error: wErr } = await supabase
     .from("webhooks")
     .select("id, kind, url, email, manage_token, confirmed_at")
     .eq("enabled", true)
     .eq("is_digest", true);
   if (wErr) {
-    // 500 not 200: a failed webhook lookup is indistinguishable from
-    // "no subscribers" if we mask it as ok. Promote to error so the
-    // scheduler logs a non-ok line and an operator can investigate.
     return Response.json(
-      {
-        ok: false,
-        digest_id: stored.id,
-        pushed: 0,
-        error: `webhooks lookup: ${wErr.message}`,
-      },
+      { ok: false, digest_id: stored.id, pushed: 0, error: `webhooks lookup: ${wErr.message}` },
       { status: 500 },
     );
   }
-  // Drop unconfirmed email subs — they don't receive anything until
-  // they click the confirmation link.
-  const subs = ((subsRaw ?? []) as DigestWebhookRow[]).filter((s) =>
-    s.kind === "discord" || (s.kind === "email" && s.confirmed_at),
+  const subs = ((subsRaw ?? []) as DigestWebhookRow[]).filter(
+    (s) => s.kind === "discord" || (s.kind === "email" && s.confirmed_at),
   );
 
-  // SITE_URL uses `||` with a production fallback, so an empty
-  // NEXT_PUBLIC_SITE_URL can't leak through as "" and produce relative
-  // /api/... links in digest emails (the `??` pattern this replaced did).
   const origin = SITE_URL;
-  const periodLabel = formatPeriodLabel(period.end);
+  const periodLabel = friendlyDay(win.etDay);
 
   let pushed = 0;
   let pushFailed = 0;
@@ -310,11 +200,18 @@ export async function GET(req: NextRequest) {
     await runPool(subs, 4, async (sub) => {
       const unsubscribeUrl = `${origin}/api/webhooks/unsubscribe?id=${sub.id}&token=${sub.manage_token}`;
       if (sub.kind === "discord" && sub.url) {
-        const ok = await pushDigestToDiscord(sub.url, markdown);
+        const ok = await pushDigestToDiscord(sub.url, combinedMarkdown);
         if (ok) pushed++;
         else pushFailed++;
       } else if (sub.kind === "email" && sub.email) {
-        const tmpl = buildDigestEmail(markdown, periodLabel, unsubscribeUrl);
+        const tmpl = buildDailyBriefEmail({
+          newsSections,
+          newsCitations: newsBrief?.citations ?? null,
+          xMarkdown: xBrief?.markdown ?? null,
+          xCitations: xBrief?.citations ?? null,
+          periodLabel,
+          unsubscribeUrl,
+        });
         const res = await sendEmail({
           to: sub.email,
           subject: tmpl.subject,
@@ -331,77 +228,47 @@ export async function GET(req: NextRequest) {
   return Response.json({
     ok: true,
     digest_id: stored.id,
-    period_start: period.start,
-    period_end: period.end,
-    item_count: promptItems.length,
+    et_day: win.etDay,
+    item_count: itemCount,
+    has_news: !!newsSections,
+    has_x: !!xBrief,
     subscribers: subs.length,
     pushed,
     push_failed: pushFailed,
   });
 }
 
-function formatPeriodLabel(endIso: string): string {
-  try {
-    return new Date(endIso).toISOString().slice(0, 10);
-  } catch {
-    return endIso;
-  }
-}
-
 export const POST = GET;
 
-async function generateDigest(
-  items: DigestItemInput[],
-  period: { start: string; end: string },
-): Promise<DigestSections> {
-  const anthropic = getAnthropic();
-  const response = await anthropic.messages.create({
-    model: DIGEST_MODEL,
-    max_tokens: 4000,
-    system: [
-      {
-        type: "text",
-        text: DIGEST_SYSTEM_PROMPT,
-        cache_control: { type: "ephemeral" },
-      },
-    ],
-    messages: [{ role: "user", content: buildDigestUserMessage(items, period) }],
-  });
-
-  const text = response.content.find((b) => b.type === "text");
-  if (!text || text.type !== "text") {
-    throw new Error("no text block in response");
+async function loadTodayBrief(
+  supabase: SupabaseClient,
+  surface: string,
+  sinceIso: string,
+): Promise<BriefRow | null> {
+  const { data, error } = await supabase
+    .from("briefs")
+    .select("markdown, sections, citations")
+    .eq("surface", surface)
+    .gte("generated_at", sinceIso)
+    .order("generated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) {
+    console.warn(`digest: load ${surface} brief:`, error.message);
+    return null;
   }
-  const block = extractJsonBlock(text.text);
-  if (!block) throw new Error("no JSON body in response");
-  const parsed = JSON.parse(block);
-  if (!isDigestSections(parsed)) {
-    throw new Error("digest sections schema mismatch");
-  }
-  return parsed;
+  return (data as BriefRow) ?? null;
 }
 
-// Returns the closed-open 24-hour window [yesterday-midnight-UTC,
-// today-midnight-UTC). The digest is a retrospective summary, so we
-// align to the most recent past midnight, NOT the next upcoming one.
-// Every same-UTC-day call returns the same tuple → the (period_start,
-// period_end) unique constraint is the idempotency mechanism for a
-// 15-min scheduler. The window rolls at 00:00 UTC and the next tick
-// after midnight starts generating the previous day's digest.
-function currentPeriod(): { start: string; end: string } {
-  const now = new Date();
-  const end = new Date(Date.UTC(
-    now.getUTCFullYear(),
-    now.getUTCMonth(),
-    now.getUTCDate(),
-  ));
-  const start = new Date(end.getTime() - PERIOD_HOURS * 3600 * 1000);
-  return { start: start.toISOString(), end: end.toISOString() };
+function friendlyDay(etDay: string): string {
+  const [y, m, d] = etDay.split("-").map(Number);
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  if (!m || !d) return etDay;
+  return `${months[m - 1]} ${d}, ${y}`;
 }
 
-// Discord rejects message bodies > 2000 chars. The digest will routinely
-// exceed that, so we chunk on section boundaries and send each piece as
-// its own message.
+// Discord rejects message bodies > 2000 chars. The combined brief will exceed
+// that, so we chunk on line boundaries and send each piece as its own message.
 async function pushDigestToDiscord(url: string, markdown: string): Promise<boolean> {
   const chunks = chunkMarkdown(markdown, DISCORD_CHUNK_LIMIT);
   let anyFailed = false;
@@ -432,10 +299,6 @@ function chunkMarkdown(text: string, limit: number): string[] {
   };
 
   for (const line of text.split("\n")) {
-    // A single line longer than the limit can't go into buf as-is —
-    // doing so would emit a chunk exceeding Discord's 2000-char body
-    // cap. Hard-split such lines at the nearest whitespace below limit
-    // (or at limit if no whitespace), flushing buf first.
     if (line.length > limit) {
       flush();
       let remaining = line;

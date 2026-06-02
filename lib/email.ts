@@ -1,4 +1,5 @@
 import type { Category } from "@/lib/types";
+import type { NewsBriefSections } from "@/lib/anthropic/news-brief-prompt";
 
 // Resend REST API. No SDK dep — the call surface is one POST.
 const RESEND_URL = "https://api.resend.com/emails";
@@ -261,4 +262,144 @@ export function buildDigestEmail(
   );
   const text = `${markdown}\n\n—\nUnsubscribe: ${unsubscribeUrl}`;
   return { subject, html, text };
+}
+
+// ---------------------------------------------------------------------------
+// Daily 5pm-ET brief email. Two sections: a ranked "What's going on in AI
+// Space" list (from the news brief's structured topics) and "What's being
+// talked about in X" (the X prose brief, with its [n] markers turned into
+// links). Tight by design — the reader just wants what happened.
+
+interface BriefCitation {
+  label: string;
+  posts: { url: string; handle: string }[];
+}
+type CiteMap = Record<string, BriefCitation> | null | undefined;
+
+const SECTION_HEAD =
+  "margin:26px 0 12px 0;font-size:13px;letter-spacing:0.08em;text-transform:uppercase;color:#f5a73c;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;";
+
+export function buildDailyBriefEmail(input: {
+  newsSections: NewsBriefSections | null;
+  newsCitations: CiteMap;
+  xMarkdown: string | null;
+  xCitations: CiteMap;
+  periodLabel: string;
+  unsubscribeUrl: string;
+}): { subject: string; html: string; text: string } {
+  const { newsSections, newsCitations, xMarkdown, xCitations, periodLabel, unsubscribeUrl } = input;
+  const subject = `StackBrief — what happened in AI today · ${periodLabel}`;
+
+  const bodyParts: string[] = [
+    `<h1 style="margin:0 0 4px 0;font-size:20px;letter-spacing:-0.01em;color:#ececef;">What happened in AI today</h1>
+     <div style="margin:0 0 8px 0;font-size:12px;color:rgba(236,236,239,0.5);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;">${escapeHtml(periodLabel)}</div>`,
+  ];
+
+  if (newsSections && newsSections.topics.length > 0) {
+    bodyParts.push(`<h2 style="${SECTION_HEAD}">What's going on in AI Space</h2>`);
+    bodyParts.push(renderNewsTopicsHtml(newsSections, newsCitations));
+  }
+  if (xMarkdown && xMarkdown.trim()) {
+    bodyParts.push(`<h2 style="${SECTION_HEAD}">What's being talked about in X</h2>`);
+    bodyParts.push(renderXBriefHtml(xMarkdown, xCitations));
+  }
+
+  const html = shell(
+    subject,
+    bodyParts.join("\n"),
+    `<a href="${escapeHtml(unsubscribeUrl)}" style="color:rgba(236,236,239,0.5);text-decoration:underline;">Unsubscribe</a> · Daily AI brief from stackbrief.tech`,
+  );
+
+  const text = buildDailyBriefText({ newsSections, xMarkdown, periodLabel, unsubscribeUrl });
+  return { subject, html, text };
+}
+
+function renderNewsTopicsHtml(sections: NewsBriefSections, citations: CiteMap): string {
+  const items = sections.topics.map((t) => {
+    const url = citations?.[String(t.cite)]?.posts?.[0]?.url;
+    const titleHtml = url
+      ? `<a href="${escapeHtml(url)}" style="color:#fff;font-weight:600;text-decoration:none;font-size:15px;">${escapeHtml(t.title)}</a>`
+      : `<span style="color:#fff;font-weight:600;font-size:15px;">${escapeHtml(t.title)}</span>`;
+    const bullets = t.bullets.length
+      ? `<ul style="margin:6px 0 0 0;padding-left:18px;color:rgba(236,236,239,0.72);font-size:14px;line-height:1.5;">${t.bullets
+          .map((b) => `<li style="margin:0 0 3px 0;">${escapeHtml(b)}</li>`)
+          .join("")}</ul>`
+      : "";
+    return `<li style="margin:0 0 14px 0;">${titleHtml}${bullets}</li>`;
+  });
+  return `<ol style="margin:0;padding-left:20px;">${items.join("")}</ol>`;
+}
+
+// The X prose brief markdown → compact HTML. Drops the brief's own H1 and the
+// "*N posts reviewed*" meta (the email section header covers it), keeps the
+// "## " subheads, and turns [n] markers into links via the citation map.
+function renderXBriefHtml(markdown: string, citations: CiteMap): string {
+  const out: string[] = [];
+  let buf: string[] = [];
+  const flush = () => {
+    if (buf.length === 0) return;
+    const para = buf.join(" ").trim();
+    if (para) {
+      out.push(
+        `<p style="margin:0 0 12px 0;font-size:14px;color:rgba(236,236,239,0.78);line-height:1.55;">${inlineWithCites(para, citations)}</p>`,
+      );
+    }
+    buf = [];
+  };
+  for (const raw of markdown.split("\n")) {
+    const line = raw.trimEnd();
+    if (line === "") { flush(); continue; }
+    if (line.startsWith("# ")) continue;
+    if (line.startsWith("## ")) {
+      flush();
+      out.push(
+        `<div style="margin:16px 0 6px 0;font-size:11px;letter-spacing:0.06em;text-transform:uppercase;color:rgba(236,236,239,0.5);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;">${escapeHtml(line.slice(3))}</div>`,
+      );
+      continue;
+    }
+    if (line.startsWith("*") && line.endsWith("*") && !line.startsWith("**")) continue;
+    buf.push(line);
+  }
+  flush();
+  return out.join("\n");
+}
+
+// **bold** + [n] citation links. Escapes first, then injects our own controlled
+// markup (the URL is escaped), so user text can't break out.
+function inlineWithCites(s: string, citations: CiteMap): string {
+  let html = escapeHtml(s).replace(/\*\*(.+?)\*\*/g, '<strong style="color:#fff;font-weight:600;">$1</strong>');
+  html = html.replace(/\[(\d+)\]/g, (_full, num: string) => {
+    const url = citations?.[num]?.posts?.[0]?.url;
+    if (!url) return `<sup style="color:rgba(236,236,239,0.4);">[${num}]</sup>`;
+    return `<sup><a href="${escapeHtml(url)}" style="color:#f5a73c;text-decoration:none;">[${num}]</a></sup>`;
+  });
+  return html;
+}
+
+function buildDailyBriefText(input: {
+  newsSections: NewsBriefSections | null;
+  xMarkdown: string | null;
+  periodLabel: string;
+  unsubscribeUrl: string;
+}): string {
+  const { newsSections, xMarkdown, periodLabel, unsubscribeUrl } = input;
+  const parts: string[] = [`What happened in AI today — ${periodLabel}`];
+  if (newsSections && newsSections.topics.length > 0) {
+    parts.push("", "What's going on in AI Space", "");
+    newsSections.topics.forEach((t, i) => {
+      parts.push(`${i + 1}. ${t.title}`);
+      for (const b of t.bullets) parts.push(`   - ${b}`);
+    });
+  }
+  if (xMarkdown && xMarkdown.trim()) {
+    // Strip the brief's own H1 / meta line; keep the prose (with bare [n]).
+    const body = xMarkdown
+      .split("\n")
+      .filter((l) => !l.startsWith("# ") && !(l.startsWith("*") && l.endsWith("*") && !l.startsWith("**")))
+      .join("\n")
+      .trim();
+    parts.push("", "What's being talked about in X", "", body);
+  }
+  parts.push("", "—", `Unsubscribe: ${unsubscribeUrl}`);
+  return parts.join("\n");
 }
