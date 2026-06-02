@@ -8,6 +8,7 @@ import { runPool } from "@/lib/utils";
 import { SITE_URL } from "@/lib/site";
 import { etDayWindow, BRIEF_HOUR_ET } from "@/lib/schedule";
 import { isNewsBriefSections, type NewsBriefSections } from "@/lib/anthropic/news-brief-prompt";
+import type { CiteMap } from "@/lib/briefs";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -32,15 +33,10 @@ interface DigestWebhookRow {
   confirmed_at: string | null;
 }
 
-interface BriefCitation {
-  label: string;
-  posts: { url: string; handle: string }[];
-}
-
 interface BriefRow {
   markdown: string;
   sections: unknown;
-  citations: Record<string, BriefCitation> | null;
+  citations: CiteMap;
 }
 
 export async function GET(req: NextRequest) {
@@ -87,21 +83,24 @@ export async function GET(req: NextRequest) {
     .join("\n\n");
   const itemCount = newsSections?.topics.length ?? 0;
 
+  // The content to store, written in one shot (generated_at set now so the
+  // claim itself persists the final row — no placeholder + refill).
+  const content = {
+    markdown: combinedMarkdown,
+    sections: { news: newsSections } as Record<string, unknown>,
+    item_count: itemCount,
+    generated_at: new Date().toISOString(),
+  };
+
   // Atomic once-per-ET-day claim on (period_start, period_end). The unique
   // constraint makes a duplicate insert a no-op; winning the claim = we send.
-  let claimedId: string | null = null;
+  let stored: { id: string } | null = null;
   let claimedExisted = false;
   if (!force) {
     const { data: claimed, error: claimErr } = await supabase
       .from("digests")
       .upsert(
-        {
-          period_start: win.periodStart,
-          period_end: win.periodEnd,
-          markdown: combinedMarkdown,
-          sections: { news: newsSections } as Record<string, unknown>,
-          item_count: itemCount,
-        },
+        { period_start: win.etMidnightUtc, period_end: win.periodEnd, ...content },
         { onConflict: "period_start,period_end", ignoreDuplicates: true },
       )
       .select("id");
@@ -112,7 +111,7 @@ export async function GET(req: NextRequest) {
       const { data: existing } = await supabase
         .from("digests")
         .select("id, generated_at")
-        .eq("period_start", win.periodStart)
+        .eq("period_start", win.etMidnightUtc)
         .eq("period_end", win.periodEnd)
         .maybeSingle();
       return Response.json({
@@ -123,42 +122,21 @@ export async function GET(req: NextRequest) {
         generated_at: existing?.generated_at ?? null,
       });
     }
-    claimedId = claimed[0].id;
+    stored = claimed[0]; // claim already wrote the final content
   } else {
+    // force=1: rewrite the existing row in place, or insert if none exists yet.
     const { data: existing } = await supabase
       .from("digests")
       .select("id")
-      .eq("period_start", win.periodStart)
+      .eq("period_start", win.etMidnightUtc)
       .eq("period_end", win.periodEnd)
       .maybeSingle();
-    claimedId = existing?.id ?? null;
     claimedExisted = !!existing;
-  }
-
-  const updatePayload = {
-    markdown: combinedMarkdown,
-    sections: { news: newsSections } as Record<string, unknown>,
-    item_count: itemCount,
-    generated_at: new Date().toISOString(),
-  };
-
-  let stored: { id: string } | null = null;
-  if (claimedId) {
-    const { data, error: updErr } = await supabase
-      .from("digests")
-      .update(updatePayload)
-      .eq("id", claimedId)
-      .select("id")
-      .single();
-    if (updErr) return Response.json({ error: `store digest: ${updErr.message}` }, { status: 500 });
-    stored = data;
-  } else {
-    const { data, error: insErr } = await supabase
-      .from("digests")
-      .insert({ period_start: win.periodStart, period_end: win.periodEnd, ...updatePayload })
-      .select("id")
-      .single();
-    if (insErr) return Response.json({ error: `store digest: ${insErr.message}` }, { status: 500 });
+    const write = existing
+      ? supabase.from("digests").update(content).eq("id", existing.id)
+      : supabase.from("digests").insert({ period_start: win.etMidnightUtc, period_end: win.periodEnd, ...content });
+    const { data, error: wErr } = await write.select("id").single();
+    if (wErr) return Response.json({ error: `store digest: ${wErr.message}` }, { status: 500 });
     stored = data;
   }
 

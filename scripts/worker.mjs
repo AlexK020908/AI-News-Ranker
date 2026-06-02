@@ -58,7 +58,7 @@ const ENDPOINTS = [
   // "On X today" synthesis brief for /x + the email's X section.
   { name: "x-brief",        path: "/api/jobs/x-brief",        timeoutMs: 120_000 },
   { name: "notify",         path: "/api/jobs/notify",         timeoutMs: 60_000  },
-  // Daily 5pm-ET email: composes the two briefs above, no LLM call of its own.
+  // Daily morning-ET email: composes the two briefs above, no LLM call of its own.
   { name: "digest",         path: "/api/jobs/digest",         timeoutMs: 120_000 },
 ];
 

@@ -48,7 +48,7 @@ export async function GET(req: NextRequest) {
   if (updErr) return renderHtml(updErr.message, 500);
 
   return renderHtml(
-    `You're subscribed as <b>${escape(data.email ?? "")}</b>. The next briefing lands tomorrow morning UTC.`,
+    `You're subscribed as <b>${escape(data.email ?? "")}</b>. The next briefing lands tomorrow morning (around 8am ET).`,
     200,
     { trackConfirmed: true },
   );

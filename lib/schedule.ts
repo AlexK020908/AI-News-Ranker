@@ -16,8 +16,7 @@ export interface EtDayWindow {
   etDay: string;             // "YYYY-MM-DD" in ET — human label / log key
   hourET: number;            // 0-23, current ET wall-clock hour
   isAfterBriefHour: boolean; // hourET >= BRIEF_HOUR_ET
-  etMidnightUtc: string;     // ISO — 00:00 ET of etDay, as a UTC instant
-  periodStart: string;       // alias of etMidnightUtc (digest period semantics)
+  etMidnightUtc: string;     // ISO — 00:00 ET of etDay, as a UTC instant (digest period_start)
   periodEnd: string;         // ISO — next 00:00 ET, as a UTC instant
 }
 
@@ -71,7 +70,6 @@ export function etDayWindow(now: Date = new Date()): EtDayWindow {
     hourET,
     isAfterBriefHour: hourET >= BRIEF_HOUR_ET,
     etMidnightUtc,
-    periodStart: etMidnightUtc,
     periodEnd,
   };
 }

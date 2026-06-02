@@ -1,66 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import type { NewsBrief, NewsBriefCitation } from "@/lib/news-brief";
+import { useEffect, useState } from "react";
+import type { NewsBrief } from "@/lib/news-brief";
 import { useScrollY } from "@/lib/stack/hooks";
+import { CitationChip } from "./CitationChip";
 import { Nav } from "./Nav";
 
 interface Props {
   brief?: NewsBrief | null;
-}
-
-// Inline citation chip — identical behaviour to the one on /x: a [n] becomes a
-// link to the story's source. A single source links straight out; a multi-post
-// citation opens a small flyout. Falls back to a muted "[n]" when we have no
-// source for the number.
-function CitationChip({ n, citation }: { n: number; citation: NewsBriefCitation | undefined }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLSpanElement | null>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onDoc = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
-  }, [open]);
-
-  if (!citation || citation.posts.length === 0) {
-    return <sup className="cite cite--dead">[{n}]</sup>;
-  }
-  if (citation.posts.length === 1) {
-    return (
-      <sup className="cite">
-        <a href={citation.posts[0].url} target="_blank" rel="noopener noreferrer" title={citation.label}>
-          {n}
-        </a>
-      </sup>
-    );
-  }
-  return (
-    <span className="cite cite--multi" ref={ref}>
-      <button
-        type="button"
-        className="cite__btn"
-        aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
-        title={`${citation.posts.length} sources`}
-      >
-        {n}<span className="cite__count">·{citation.posts.length}</span>
-      </button>
-      {open && (
-        <span className="cite__flyout" role="menu">
-          <span className="cite__flyout-head">{citation.label} · {citation.posts.length} sources</span>
-          {citation.posts.map((p, i) => (
-            <a key={i} href={p.url} target="_blank" rel="noopener noreferrer" className="cite__flyout-item" role="menuitem">
-              {p.handle}
-            </a>
-          ))}
-        </span>
-      )}
-    </span>
-  );
 }
 
 // The /brief section: the ranked "What's going on in AI Space" list — each
@@ -109,7 +56,7 @@ export function BriefPage({ brief }: Props) {
                 <li key={i} className="news-brief__topic">
                   <div className="news-brief__title">
                     {t.title}
-                    <CitationChip n={t.cite} citation={citations?.[String(t.cite)]} />
+                    <CitationChip n={t.cite} citation={citations?.[String(t.cite)]} variant="news" />
                   </div>
                   {t.bullets.length > 0 && (
                     <ul className="news-brief__bullets">

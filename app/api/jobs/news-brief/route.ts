@@ -100,8 +100,8 @@ export async function GET(req: NextRequest) {
     return Response.json({ error: `trending_items: ${tErr.message}` }, { status: 500 });
   }
 
-  const sinceMs = Date.now() - WINDOW_HOURS * 3600 * 1000;
   const nowMs = Date.now();
+  const sinceMs = nowMs - WINDOW_HOURS * 3600 * 1000;
   const rows = ((trending ?? []) as TrendingItemRow[])
     .filter((r) => {
       const stamp = r.published_at ?? r.ingested_at;

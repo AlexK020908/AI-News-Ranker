@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import type { XBriefCitation } from "@/lib/x";
 import { useScrollY } from "@/lib/stack/hooks";
+import { CitationChip } from "./CitationChip";
 import { Nav } from "./Nav";
 
 type Citations = Record<string, XBriefCitation> | null | undefined;
@@ -10,62 +11,6 @@ type Citations = Record<string, XBriefCitation> | null | undefined;
 interface Props {
   brief?: string | null;
   citations?: Citations;
-}
-
-// Inline citation chip — the Google-AI-Overview move. A [n] in the brief becomes
-// this: a single source links straight to the post on X; a cluster of N posts
-// opens a small flyout listing them, each one click to X. Falls back to a plain
-// muted "[n]" if the model cited a number we have no source for.
-function CitationChip({ n, citation }: { n: number; citation: XBriefCitation | undefined }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLSpanElement | null>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onDoc = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
-  }, [open]);
-
-  if (!citation || citation.posts.length === 0) {
-    return <sup className="cite cite--dead">[{n}]</sup>;
-  }
-  // Single source → direct link, no flyout needed.
-  if (citation.posts.length === 1) {
-    return (
-      <sup className="cite">
-        <a href={citation.posts[0].url} target="_blank" rel="noopener noreferrer" title={`@${citation.posts[0].handle} on X`}>
-          {n}
-        </a>
-      </sup>
-    );
-  }
-  // Multiple posts → chip opens a flyout of all of them.
-  return (
-    <span className="cite cite--multi" ref={ref}>
-      <button
-        type="button"
-        className="cite__btn"
-        aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
-        title={`${citation.posts.length} posts on X`}
-      >
-        {n}<span className="cite__count">·{citation.posts.length}</span>
-      </button>
-      {open && (
-        <span className="cite__flyout" role="menu">
-          <span className="cite__flyout-head">{citation.label} · {citation.posts.length} posts</span>
-          {citation.posts.map((p, i) => (
-            <a key={i} href={p.url} target="_blank" rel="noopener noreferrer" className="cite__flyout-item" role="menuitem">
-              𝕏 @{p.handle}
-            </a>
-          ))}
-        </span>
-      )}
-    </span>
-  );
 }
 
 // Minimal markdown → elements for the brief: `# h1`, `## h2`, `*meta line*`,

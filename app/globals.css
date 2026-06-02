@@ -174,7 +174,11 @@ button:disabled { cursor: not-allowed; }
   padding: 14px 32px;
   display: flex;
   align-items: center;
-  gap: 14px;
+  /* Tight gap so the full category rail (…Tool, News, Other) + destination links
+     (Brief/X/Repos) + actions all fit at the 1280 cap without the rail's
+     right-edge mask clipping the last pills. Was 14px; the Brief destination ate
+     the margin News + Other need. */
+  gap: 8px;
 }
 @media (max-width: 1080px) { .nav__inner { padding: 12px 24px; } }
 @media (max-width: 720px)  { .nav__inner { padding: 12px 18px; gap: 14px; } }
@@ -212,7 +216,7 @@ button:disabled { cursor: not-allowed; }
 .nav__pills::-webkit-scrollbar { display: none; }
 
 .pill {
-  padding: 5px 7px;
+  padding: 5px 5px;
   border-radius: 999px;
   font-family: var(--mono);
   font-size: 11px;
@@ -262,8 +266,8 @@ button:disabled { cursor: not-allowed; }
 .nav__link {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
+  gap: 5px;
+  padding: 6px 9px;
   border-radius: 999px;
   font-family: var(--mono);
   font-size: 12px;
@@ -1516,6 +1520,49 @@ button:disabled { cursor: not-allowed; }
   background: rgba(248, 113, 113, 0.08);
   border: 1px solid rgba(248, 113, 113, 0.24);
   border-radius: 8px;
+}
+
+/* ============ Signup landing (/signup — bio link) ============ */
+.signup {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 32px 20px;
+}
+.signup__card {
+  width: 100%;
+  max-width: 460px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  text-align: left;
+}
+.signup__brand { display: inline-flex; margin-bottom: 4px; }
+.signup__logo { height: 30px; width: auto; color: var(--text); }
+.signup__form {
+  display: flex;
+  gap: 10px;
+  margin-top: 4px;
+}
+.signup__form .sub-input { flex: 1; }
+.signup__form .btn-primary { white-space: nowrap; }
+.signup__fine {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+  margin: 2px 0 0;
+}
+.signup__feedlink {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--muted);
+  text-decoration: none;
+  margin-top: 6px;
+}
+.signup__feedlink:hover { color: var(--accent); }
+@media (max-width: 520px) {
+  .signup__form { flex-direction: column; }
+  .signup__form .btn-primary { justify-content: center; }
 }
 
 /* Segmented control — used for Email/Discord and Digest/Alerts toggles.

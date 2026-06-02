@@ -1,5 +1,6 @@
 import type { Category } from "@/lib/types";
 import type { NewsBriefSections } from "@/lib/anthropic/news-brief-prompt";
+import type { CiteMap } from "@/lib/briefs";
 
 // Resend REST API. No SDK dep — the call surface is one POST.
 const RESEND_URL = "https://api.resend.com/emails";
@@ -123,52 +124,6 @@ function escapeHtml(s: string): string {
   );
 }
 
-// Inline markdown → HTML for the digest. The digest prompt promises
-// plain prose with `## headings`, `**bold**`, and double-newline paragraph
-// breaks — no lists, no links in prose, no code. Anything richer than that
-// is out of scope and would need a real renderer.
-export function renderDigestHtml(markdown: string): string {
-  const lines = markdown.split("\n");
-  const out: string[] = [];
-  let buf: string[] = [];
-
-  const flush = () => {
-    if (buf.length === 0) return;
-    const para = buf.join(" ").trim();
-    if (para) out.push(`<p style="margin:0 0 14px 0;font-size:15px;color:#ececef;">${inlineFmt(para)}</p>`);
-    buf = [];
-  };
-
-  for (const raw of lines) {
-    const line = raw.trimEnd();
-    if (line === "") { flush(); continue; }
-    if (line.startsWith("# ")) {
-      flush();
-      out.push(`<h1 style="margin:0 0 6px 0;font-size:22px;letter-spacing:-0.01em;color:#ececef;">${inlineFmt(line.slice(2))}</h1>`);
-      continue;
-    }
-    if (line.startsWith("## ")) {
-      flush();
-      out.push(`<h2 style="margin:24px 0 10px 0;font-size:13px;letter-spacing:0.08em;text-transform:uppercase;color:#f5a73c;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;">${inlineFmt(line.slice(3))}</h2>`);
-      continue;
-    }
-    if (line.startsWith("*") && line.endsWith("*") && !line.startsWith("**")) {
-      flush();
-      out.push(`<div style="margin:0 0 18px 0;font-size:12px;color:rgba(236,236,239,0.5);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;">${escapeHtml(line.slice(1, -1))}</div>`);
-      continue;
-    }
-    buf.push(line);
-  }
-  flush();
-  return out.join("\n");
-}
-
-function inlineFmt(s: string): string {
-  return escapeHtml(s).replace(/\*\*(.+?)\*\*/g, '<strong style="color:#fff;font-weight:600;">$1</strong>');
-}
-
-// ---------------------------------------------------------------------------
-
 export function buildConfirmationEmail(confirmUrl: string): { subject: string; html: string; text: string } {
   const subject = "Confirm your StackBrief subscription";
   const html = shell(
@@ -248,33 +203,10 @@ export function buildItemAlertEmail(
 }
 
 // ---------------------------------------------------------------------------
-
-export function buildDigestEmail(
-  markdown: string,
-  periodLabel: string,
-  unsubscribeUrl: string,
-): { subject: string; html: string; text: string } {
-  const subject = `StackBrief — ${periodLabel}`;
-  const html = shell(
-    subject,
-    renderDigestHtml(markdown),
-    `<a href="${escapeHtml(unsubscribeUrl)}" style="color:rgba(236,236,239,0.5);text-decoration:underline;">Unsubscribe</a> · Daily AI briefing from stackbrief.tech`,
-  );
-  const text = `${markdown}\n\n—\nUnsubscribe: ${unsubscribeUrl}`;
-  return { subject, html, text };
-}
-
-// ---------------------------------------------------------------------------
-// Daily 5pm-ET brief email. Two sections: a ranked "What's going on in AI
+// Daily morning-ET brief email. Two sections: a ranked "What's going on in AI
 // Space" list (from the news brief's structured topics) and "What's being
 // talked about in X" (the X prose brief, with its [n] markers turned into
 // links). Tight by design — the reader just wants what happened.
-
-interface BriefCitation {
-  label: string;
-  posts: { url: string; handle: string }[];
-}
-type CiteMap = Record<string, BriefCitation> | null | undefined;
 
 const SECTION_HEAD =
   "margin:26px 0 12px 0;font-size:13px;letter-spacing:0.08em;text-transform:uppercase;color:#f5a73c;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;";

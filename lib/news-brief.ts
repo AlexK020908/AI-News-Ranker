@@ -1,17 +1,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { NewsBriefSections } from "@/lib/anthropic/news-brief-prompt";
-
-// [n] → the source to open for that topic. Same shape as the X citation map so
-// the /brief page can reuse the citation chip unchanged.
-export interface NewsBriefCitation {
-  label: string;
-  posts: { url: string; handle: string }[];
-}
+import type { CiteMap } from "@/lib/briefs";
 
 export interface NewsBrief {
   sections: NewsBriefSections | null;
   generated_at: string;
-  citations: Record<string, NewsBriefCitation> | null;
+  citations: CiteMap;
 }
 
 // The "What's going on in AI Space" brief rendered on /brief. Latest row for

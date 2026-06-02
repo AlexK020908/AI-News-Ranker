@@ -6,6 +6,7 @@
 // leads with ("just tell me what happened"), and it also drives the /brief page.
 
 import type { Category } from "@/lib/types";
+import type { BriefCitation } from "@/lib/briefs";
 
 export const NEWS_BRIEF_MODEL = "claude-sonnet-4-6";
 
@@ -21,12 +22,8 @@ export interface NewsItemInput {
   paper_tldr?: string | null;
 }
 
-// [n] → the source to open for that topic. Mirrors XCitation's shape (label +
-// posts[]) so the /brief renderer can reuse the X citation chip unchanged.
-export interface NewsCitation {
-  label: string;
-  posts: { url: string; handle: string }[];
-}
+// [n] → the source to open for that topic. The shared brief citation shape.
+export type NewsCitation = BriefCitation;
 
 export interface NewsBriefTopic {
   title: string;       // the headline, e.g. "Anthropic files confidential S-1"
