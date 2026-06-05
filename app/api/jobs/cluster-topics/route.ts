@@ -9,7 +9,7 @@ import {
   vectorNorm,
   type Cluster,
 } from "@/lib/topics/cluster";
-import { labelCluster, slugify } from "@/lib/topics/label";
+import { labelCluster, slugify, slugsDivergeCompletely } from "@/lib/topics/label";
 import { buildLinkEdges } from "@/lib/topics/links";
 import { runPool } from "@/lib/utils";
 import { HIGH_IMPACT_MEMBER_IMPORTANCE } from "@/lib/anthropic/scoring";
@@ -264,6 +264,7 @@ export async function GET(req: NextRequest) {
   let labeled = 0;
   let reused = 0;
   let skipped = 0;
+  let reslugged = 0;
   const touchedIds: string[] = [];
 
   await runPool(clusters, LABEL_CONCURRENCY, async (cluster) => {
@@ -313,23 +314,39 @@ export async function GET(req: NextRequest) {
       const hasHighImpactMember = cluster.member_ids.some(
         (id) => (itemById.get(id)?.importance ?? 0) >= HIGH_IMPACT_MEMBER_IMPORTANCE,
       );
-      if (memberCountDelta >= 2 || hasHighImpactMember) {
-        const labelResult = await labelClusterSafe(cluster, itemById);
-        if (labelResult) {
-          label = labelResult.label;
-          summary = labelResult.summary || null;
-          labeled++;
-        } else {
-          label = match.label;
-          summary = match.summary;
-          reused++;
-        }
+      const relabel =
+        memberCountDelta >= 2 || hasHighImpactMember
+          ? await labelClusterSafe(cluster, itemById)
+          : null;
+      if (relabel && slugsDivergeCompletely(match.slug, slugify(relabel.label))) {
+        // Topic-identity drift. The cluster matched this row by centroid, but
+        // the regenerated label shares NO meaningful token with the row's slug
+        // — the story has migrated out from under the topic (e.g. an
+        // "ai-infrastructure-funding-surge" row whose members churned into an
+        // Anthropic self-improvement story). Reset the identity: mint a fresh
+        // slug from the new label so the permalink tracks the current story
+        // instead of a fossil of the topic's birth label. We re-slug IN PLACE
+        // (same row id, same update path below) rather than inserting a new
+        // row — a new row would orphan this row's last-written members as a
+        // ghost duplicate of the same story until the staleness prune, and a
+        // delete-old-then-insert variant races the concurrent matcher. The
+        // stable id also keeps topic_members / topic_engagement FKs intact.
+        label = relabel.label;
+        summary = relabel.summary || null;
+        slug = await uniqueSlug(supabase, slugify(label), topicId);
+        labeled++;
+        reslugged++;
+      } else if (relabel) {
+        label = relabel.label;
+        summary = relabel.summary || null;
+        slug = match.slug;
+        labeled++;
       } else {
         label = match.label;
         summary = match.summary;
+        slug = match.slug;
         reused++;
       }
-      slug = match.slug;
     } else {
       const labelResult = await labelClusterSafe(cluster, itemById);
       if (!labelResult) {
@@ -400,6 +417,7 @@ export async function GET(req: NextRequest) {
     clusters: clusters.length,
     labeled,
     reused,
+    reslugged,
     skipped,
     pruned,
     durationMs: Date.now() - started,

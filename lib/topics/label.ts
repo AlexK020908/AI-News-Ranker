@@ -86,3 +86,46 @@ export function slugify(label: string): string {
     .replace(/^-+|-+$/g, "")
     .slice(0, 60);
 }
+
+// Generic kebab segments that carry no topic identity: AI vocabulary that
+// labels the whole feed, the connectives slugify leaves behind, and the
+// "topic" prefix of fallback slugs. Two slugs sharing ONLY these are not about
+// the same thing. Stored in singular form (normToken strips plurals first).
+const GENERIC_SLUG_TOKENS = new Set([
+  "ai", "llm", "ml", "model", "new", "open", "topic",
+  "the", "and", "for", "with", "from", "via", "into",
+]);
+
+// Normalize a slug token for comparison: drop a trailing plural "s" so
+// "agents" matches "agent" and "models" matches "model".
+function normToken(t: string): string {
+  return t.length > 3 && t.endsWith("s") ? t.slice(0, -1) : t;
+}
+
+// The identity-bearing tokens of a slug: kebab segments that aren't generic
+// AI/stopword filler and are long enough to mean something, plural-normalized.
+export function meaningfulSlugTokens(slug: string): Set<string> {
+  const out = new Set<string>();
+  for (const raw of slug.split("-")) {
+    if (raw.length < 3) continue;
+    const t = normToken(raw);
+    if (GENERIC_SLUG_TOKENS.has(t)) continue;
+    out.add(t);
+  }
+  return out;
+}
+
+// True when two slugs share NO meaningful token — i.e. a topic's label has
+// drifted to a genuinely different subject, not merely been reworded. The
+// clustering job uses this to decide whether a matched topic row should keep
+// its identity/permalink or reset to a fresh slug. Deliberately conservative:
+// it fires only on TOTAL lexical divergence, so singular/plural and minor
+// rewordings ("Reasoning Models" -> "Open Reasoning Models") keep the slug.
+// Returns false when either side has no meaningful tokens (can't judge).
+export function slugsDivergeCompletely(a: string, b: string): boolean {
+  const ta = meaningfulSlugTokens(a);
+  const tb = meaningfulSlugTokens(b);
+  if (ta.size === 0 || tb.size === 0) return false;
+  for (const t of tb) if (ta.has(t)) return false;
+  return true;
+}
