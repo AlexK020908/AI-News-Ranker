@@ -8,7 +8,7 @@ in [README.md](./README.md) — this file just covers "how do I run it".
 ```powershell
 # Terminal 1 — app
 npm install
-npm run dev
+npm run devssdsd
 
 # Terminal 2 — periodic ingest/enrich/cluster/notify loop
 powershell -ExecutionPolicy Bypass -File .\scripts\loop.ps1
