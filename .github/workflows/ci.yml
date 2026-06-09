@@ -1,7 +1,8 @@
 # Repository secrets (Settings → Secrets and variables → Actions):
 #   Required: NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY,
-#             SUPABASE_SERVICE_ROLE_KEY, ANTHROPIC_API_KEY, CRON_SECRET
-#   Optional: REDIS_URL, VOYAGE_API_KEY, GH_TOKEN_INGEST,
+#             SUPABASE_SERVICE_ROLE_KEY, OPENROUTER_API_KEY, CRON_SECRET
+#   Optional: ANTHROPIC_API_KEY (only for LLM_PROVIDER=anthropic fallback),
+#             REDIS_URL, VOYAGE_API_KEY, GH_TOKEN_INGEST,
 #             SEMANTIC_SCHOLAR_API_KEY, DISCORD_WEBHOOK_URL,
 #             ITEM_RETENTION_DAYS, NEXT_PUBLIC_SITE_URL, NEXT_PUBLIC_GA_ID,
 #             S3_BUCKET, S3_REGION, S3_ENDPOINT, S3_FORCE_PATH_STYLE,
@@ -55,6 +56,13 @@ jobs:
           NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
           SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          # LLM provider for enrichment / labeling / rerank / briefs. Default
+          # openrouter (routes to Gemini 2.5 Flash-Lite — ~10x cheaper than
+          # Claude Haiku; enrichment is ~80-90% of LLM spend). See lib/llm/chat.ts.
+          LLM_PROVIDER=openrouter
+          OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }}
+          # ANTHROPIC_API_KEY is now only used when LLM_PROVIDER=anthropic (the
+          # fallback path) and by the manual scripts/verify-sources.mjs tool.
           ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}
           VOYAGE_API_KEY=${{ secrets.VOYAGE_API_KEY }}
           CRON_SECRET=${{ secrets.CRON_SECRET }}
