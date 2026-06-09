@@ -2,12 +2,11 @@ import type { NextRequest } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { isAuthorizedJob } from "@/lib/job-auth";
-import { getAnthropic } from "@/lib/anthropic/client";
+import { chatText, BRIEF_MODEL, llmConfigured } from "@/lib/llm/chat";
 import { extractJsonBlock } from "@/lib/utils";
 import { DIGEST_MIN_IMPORTANCE } from "@/lib/anthropic/scoring";
 import { etDayWindow, BRIEF_HOUR_ET } from "@/lib/schedule";
 import {
-  NEWS_BRIEF_MODEL,
   NEWS_BRIEF_SYSTEM_PROMPT,
   buildNewsBriefUserMessage,
   renderNewsBriefMarkdown,
@@ -53,8 +52,8 @@ export async function GET(req: NextRequest) {
   if (!isAuthorizedJob(req)) {
     return Response.json({ error: "unauthorized" }, { status: 401 });
   }
-  if (!process.env.ANTHROPIC_API_KEY) {
-    return Response.json({ error: "ANTHROPIC_API_KEY not set" }, { status: 500 });
+  if (!llmConfigured()) {
+    return Response.json({ error: "no LLM provider configured" }, { status: 500 });
   }
 
   let supabase: SupabaseClient;
@@ -140,18 +139,13 @@ export async function GET(req: NextRequest) {
 
   let sections;
   try {
-    const anthropic = getAnthropic();
-    const resp = await anthropic.messages.create({
-      model: NEWS_BRIEF_MODEL,
-      max_tokens: 2000,
-      system: [{ type: "text", text: NEWS_BRIEF_SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
-      messages: [{ role: "user", content: buildNewsBriefUserMessage(items, period) }],
+    const text = await chatText({
+      system: NEWS_BRIEF_SYSTEM_PROMPT,
+      user: buildNewsBriefUserMessage(items, period),
+      model: BRIEF_MODEL,
+      maxTokens: 2000,
     });
-    const textBlock = resp.content.find((b) => b.type === "text");
-    if (!textBlock || textBlock.type !== "text") {
-      return Response.json({ error: "no text in model response" }, { status: 502 });
-    }
-    const block = extractJsonBlock(textBlock.text);
+    const block = extractJsonBlock(text);
     const parsed = block ? JSON.parse(block) : null;
     if (!isNewsBriefSections(parsed) || parsed.topics.length === 0) {
       return Response.json({ error: "model returned malformed or empty brief" }, { status: 502 });
@@ -177,7 +171,7 @@ export async function GET(req: NextRequest) {
     markdown,
     sections,
     citations,
-    model: NEWS_BRIEF_MODEL,
+    model: BRIEF_MODEL,
     item_count: items.length,
   });
   if (insErr) return Response.json({ error: insErr.message }, { status: 500 });

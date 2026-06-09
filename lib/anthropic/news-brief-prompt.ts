@@ -8,8 +8,6 @@
 import type { Category } from "@/lib/types";
 import type { BriefCitation } from "@/lib/briefs";
 
-export const NEWS_BRIEF_MODEL = "claude-sonnet-4-6";
-
 // A numbered candidate item handed to the model. `n` is the citation marker.
 export interface NewsItemInput {
   n: number;

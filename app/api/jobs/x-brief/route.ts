@@ -2,12 +2,11 @@ import type { NextRequest } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { isAuthorizedJob } from "@/lib/job-auth";
-import { getAnthropic } from "@/lib/anthropic/client";
+import { chatText, BRIEF_MODEL, llmConfigured } from "@/lib/llm/chat";
 import { extractJsonBlock } from "@/lib/utils";
 import { etDayWindow, BRIEF_HOUR_ET } from "@/lib/schedule";
 import { twitterSourceIds } from "@/lib/twitter-sources";
 import {
-  X_BRIEF_MODEL,
   X_BRIEF_SYSTEM_PROMPT,
   buildXBriefUserMessage,
   renderXBriefMarkdown,
@@ -53,8 +52,8 @@ export async function GET(req: NextRequest) {
   if (!isAuthorizedJob(req)) {
     return Response.json({ error: "unauthorized" }, { status: 401 });
   }
-  if (!process.env.ANTHROPIC_API_KEY) {
-    return Response.json({ error: "ANTHROPIC_API_KEY not set" }, { status: 500 });
+  if (!llmConfigured()) {
+    return Response.json({ error: "no LLM provider configured" }, { status: 500 });
   }
 
   let supabase: SupabaseClient;
@@ -198,20 +197,13 @@ export async function GET(req: NextRequest) {
   let markdown: string;
   let sections: unknown;
   try {
-    const anthropic = getAnthropic();
-    const resp = await anthropic.messages.create({
-      model: X_BRIEF_MODEL,
-      max_tokens: 1200,
-      system: [
-        { type: "text", text: X_BRIEF_SYSTEM_PROMPT, cache_control: { type: "ephemeral" } },
-      ],
-      messages: [{ role: "user", content: userMsg }],
+    const text = await chatText({
+      system: X_BRIEF_SYSTEM_PROMPT,
+      user: userMsg,
+      model: BRIEF_MODEL,
+      maxTokens: 1200,
     });
-    const textBlock = resp.content.find((b) => b.type === "text");
-    if (!textBlock || textBlock.type !== "text") {
-      return Response.json({ error: "no text in model response" }, { status: 502 });
-    }
-    const block = extractJsonBlock(textBlock.text);
+    const block = extractJsonBlock(text);
     sections = block ? JSON.parse(block) : null;
     if (!isXBriefSections(sections)) {
       return Response.json({ error: "model returned malformed sections" }, { status: 502 });
@@ -231,7 +223,7 @@ export async function GET(req: NextRequest) {
     markdown,
     sections,
     citations,
-    model: X_BRIEF_MODEL,
+    model: BRIEF_MODEL,
     item_count: sources.length,
   });
   if (insErr) return Response.json({ error: insErr.message }, { status: 500 });

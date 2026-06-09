@@ -10,6 +10,7 @@ import {
   type Cluster,
 } from "@/lib/topics/cluster";
 import { labelCluster, slugify, slugsDivergeCompletely } from "@/lib/topics/label";
+import { llmConfigured } from "@/lib/llm/chat";
 import { buildLinkEdges } from "@/lib/topics/links";
 import { runPool } from "@/lib/utils";
 import { HIGH_IMPACT_MEMBER_IMPORTANCE } from "@/lib/anthropic/scoring";
@@ -116,8 +117,8 @@ export async function GET(req: NextRequest) {
   if (!isAuthorizedJob(req)) {
     return Response.json({ error: "unauthorized" }, { status: 401 });
   }
-  if (!process.env.ANTHROPIC_API_KEY) {
-    return Response.json({ error: "ANTHROPIC_API_KEY not set" }, { status: 500 });
+  if (!llmConfigured()) {
+    return Response.json({ error: "no LLM provider configured" }, { status: 500 });
   }
 
   const started = Date.now();

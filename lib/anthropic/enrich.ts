@@ -1,4 +1,4 @@
-import { ENRICHMENT_MODEL, getAnthropic } from "./client";
+import { chatText, ENRICH_MODEL } from "@/lib/llm/chat";
 import {
   buildEnrichmentUserMessage,
   ENRICHMENT_SYSTEM_PROMPT,
@@ -37,30 +37,13 @@ export interface EnrichResult {
 }
 
 export async function enrichItem(input: EnrichInput): Promise<EnrichResult> {
-  const anthropic = getAnthropic();
-  const response = await anthropic.messages.create({
-    model: ENRICHMENT_MODEL,
-    max_tokens: 500,
-    system: [
-      {
-        type: "text",
-        text: ENRICHMENT_SYSTEM_PROMPT,
-        cache_control: { type: "ephemeral" },
-      },
-    ],
-    messages: [
-      {
-        role: "user",
-        content: buildEnrichmentUserMessage(input),
-      },
-    ],
+  const text = await chatText({
+    system: ENRICHMENT_SYSTEM_PROMPT,
+    user: buildEnrichmentUserMessage(input),
+    model: ENRICH_MODEL,
+    maxTokens: 500,
   });
-
-  const textBlock = response.content.find((b) => b.type === "text");
-  if (!textBlock || textBlock.type !== "text") {
-    throw new Error("Anthropic response had no text block");
-  }
-  const parsed = parseEnrichmentJSON(textBlock.text);
+  const parsed = parseEnrichmentJSON(text);
   const category = normalizeCategory(parsed.category);
   const cavemanRaw = typeof parsed.caveman_summary === "string"
     ? parsed.caveman_summary.trim()

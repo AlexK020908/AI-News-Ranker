@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { enrichItem } from "@/lib/anthropic/enrich";
+import { llmConfigured } from "@/lib/llm/chat";
 import { combineImportance } from "@/lib/anthropic/scoring";
 import { embedText } from "@/lib/anthropic/embed";
 import {
@@ -89,8 +90,8 @@ export async function GET(req: NextRequest) {
   // a row was already enriched, or when Claude returned an empty caveman
   // on first pass.
   if (searchParams.get("backfill_caveman") === "1") {
-    if (!process.env.ANTHROPIC_API_KEY) {
-      return Response.json({ error: "ANTHROPIC_API_KEY not set" }, { status: 500 });
+    if (!llmConfigured()) {
+      return Response.json({ error: "no LLM provider configured" }, { status: 500 });
     }
     return await runCavemanBackfill(limit);
   }
@@ -100,14 +101,14 @@ export async function GET(req: NextRequest) {
   // multi-axis combiner. Everything else on the row stays as-is. Dead-lettered
   // via raw.importance_backfilled_at so a single bad row doesn't cycle.
   if (searchParams.get("backfill_importance") === "1") {
-    if (!process.env.ANTHROPIC_API_KEY) {
-      return Response.json({ error: "ANTHROPIC_API_KEY not set" }, { status: 500 });
+    if (!llmConfigured()) {
+      return Response.json({ error: "no LLM provider configured" }, { status: 500 });
     }
     return await runImportanceBackfill(limit);
   }
 
-  if (!process.env.ANTHROPIC_API_KEY) {
-    return Response.json({ error: "ANTHROPIC_API_KEY not set" }, { status: 500 });
+  if (!llmConfigured()) {
+    return Response.json({ error: "no LLM provider configured" }, { status: 500 });
   }
 
   try {

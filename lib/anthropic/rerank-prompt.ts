@@ -6,7 +6,7 @@
 // far more reliable at. The job (app/api/jobs/rerank) maps the returned order
 // onto topics.rerank_rank.
 
-import { RERANK_MODEL, getAnthropic } from "@/lib/anthropic/client";
+import { chatText, RERANK_MODEL } from "@/lib/llm/chat";
 
 const RERANK_SYSTEM_PROMPT = `You are the editor of a frontier-AI news homepage for researchers and builders. You are given a numbered list of today's candidate stories. Your job is to ORDER them by genuine importance to that audience — most important first.
 
@@ -50,18 +50,12 @@ export async function rerankTopics(
 
   let text: string;
   try {
-    const anthropic = getAnthropic();
-    const response = await anthropic.messages.create({
+    text = await chatText({
+      system: RERANK_SYSTEM_PROMPT,
+      user: userMsg,
       model: RERANK_MODEL,
-      max_tokens: 2000,
-      system: [
-        { type: "text", text: RERANK_SYSTEM_PROMPT, cache_control: { type: "ephemeral" } },
-      ],
-      messages: [{ role: "user", content: userMsg }],
+      maxTokens: 2000,
     });
-    const block = response.content.find((b) => b.type === "text");
-    if (!block || block.type !== "text") return null;
-    text = block.text;
   } catch (e) {
     console.error("rerankTopics call failed:", (e as Error).message);
     return null;

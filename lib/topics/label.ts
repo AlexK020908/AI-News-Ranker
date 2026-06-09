@@ -1,4 +1,4 @@
-import { ENRICHMENT_MODEL, getAnthropic } from "@/lib/anthropic/client";
+import { chatText, LABEL_MODEL } from "@/lib/llm/chat";
 import { extractJsonBlock } from "@/lib/utils";
 
 // Prompt-cached: the instructions don't change across clusters, so Anthropic
@@ -30,8 +30,6 @@ export interface LabelInput {
 }
 
 export async function labelCluster(input: LabelInput): Promise<TopicLabel | null> {
-  const anthropic = getAnthropic();
-
   const lines: string[] = [];
   for (let i = 0; i < Math.min(input.titles.length, 12); i++) {
     const t = input.titles[i]?.slice(0, 200) ?? "";
@@ -43,23 +41,14 @@ export async function labelCluster(input: LabelInput): Promise<TopicLabel | null
     "\n",
   )}\n\nReturn ONLY the JSON object.`;
 
-  const response = await anthropic.messages.create({
-    model: ENRICHMENT_MODEL,
-    max_tokens: 200,
-    system: [
-      {
-        type: "text",
-        text: LABELING_SYSTEM_PROMPT,
-        cache_control: { type: "ephemeral" },
-      },
-    ],
-    messages: [{ role: "user", content: userMsg }],
+  const text = await chatText({
+    system: LABELING_SYSTEM_PROMPT,
+    user: userMsg,
+    model: LABEL_MODEL,
+    maxTokens: 200,
   });
 
-  const textBlock = response.content.find((b) => b.type === "text");
-  if (!textBlock || textBlock.type !== "text") return null;
-
-  const parsed = parseJson(textBlock.text);
+  const parsed = parseJson(text);
   if (!parsed) return null;
   if (parsed.label === "SKIP" || !parsed.label) return null;
 

@@ -5,8 +5,6 @@
 // /x renderer turns each [n] into a chip linking to the source post(s) on X
 // (Google AI-Overview style) so the brief is self-sufficient — no drill-down.
 
-export const X_BRIEF_MODEL = "claude-sonnet-4-6";
-
 // A numbered source handed to the model. `kind: "cluster"` is a group of related
 // posts (cite it when summarizing that conversation); `kind: "post"` is a single
 // standout tweet.

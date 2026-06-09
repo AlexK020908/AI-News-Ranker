@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { isAuthorizedJob } from "@/lib/job-auth";
 import { rerankTopics, type RerankCandidate } from "@/lib/anthropic/rerank-prompt";
+import { llmConfigured } from "@/lib/llm/chat";
 import { runPool } from "@/lib/utils";
 
 export const runtime = "nodejs";
@@ -26,8 +27,8 @@ export async function GET(req: NextRequest) {
   if (!isAuthorizedJob(req)) {
     return Response.json({ error: "unauthorized" }, { status: 401 });
   }
-  if (!process.env.ANTHROPIC_API_KEY) {
-    return Response.json({ error: "ANTHROPIC_API_KEY not set" }, { status: 500 });
+  if (!llmConfigured()) {
+    return Response.json({ error: "no LLM provider configured" }, { status: 500 });
   }
 
   const started = Date.now();
