@@ -40,19 +40,66 @@ function renderBrief(markdown: string, citations: Citations) {
   return blocks;
 }
 
-// Inline tokenizer: **bold** and [n] citation markers.
+// Inline tokenizer: **bold** and [n] citation markers. The model doesn't only
+// emit single [n] — it groups citations ([2, 16]) and ranges them ([1-3]) — so
+// we match any bracket of digits/commas/hyphens and expand it into one chip per
+// cited index. Bracket content that isn't a clean numeric list falls back to
+// literal text.
 function inline(s: string, citations: Citations): React.ReactNode[] {
-  return s.split(/(\*\*.+?\*\*|\[\d+\])/g).filter(Boolean).map((part, i) => {
-    if (part.startsWith("**") && part.endsWith("**")) {
-      return <strong key={i}>{part.slice(2, -2)}</strong>;
+  const out: React.ReactNode[] = [];
+  const re = /(\*\*.+?\*\*)|\[([\d\s,-]+)\]/g;
+  let last = 0;
+  let key = 0;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(s)) !== null) {
+    if (m.index > last) out.push(<span key={key++}>{s.slice(last, m.index)}</span>);
+    if (m[1]) {
+      out.push(<strong key={key++}>{m[1].slice(2, -2)}</strong>);
+    } else {
+      const nums = parseCiteList(m[2]);
+      if (nums.length === 0) {
+        out.push(<span key={key++}>{m[0]}</span>);
+      } else {
+        nums.forEach((n, j) => {
+          // Muted superscript comma so "[2, 16]" reads as two chips, not "216".
+          if (j > 0) out.push(<sup key={key++} className="cite cite--dead">,</sup>);
+          out.push(<CitationChip key={key++} n={n} citation={citations?.[String(n)]} />);
+        });
+      }
     }
-    const m = /^\[(\d+)\]$/.exec(part);
-    if (m) {
-      const n = Number(m[1]);
-      return <CitationChip key={i} n={n} citation={citations?.[String(n)]} />;
+    last = m.index + m[0].length;
+  }
+  if (last < s.length) out.push(<span key={key++}>{s.slice(last)}</span>);
+  return out;
+}
+
+// Parse a citation bracket body into its cited indices: single numbers, comma
+// lists, and small ranges ("2, 16" -> [2,16]; "1-3" -> [1,2,3]). Returns [] for
+// anything that isn't a clean numeric citation (a stray "[2020-2024]" or
+// "[wip]") so the caller renders the bracket as literal text.
+function parseCiteList(body: string): number[] {
+  // Citation indices reference the handful of posts/sources reviewed, so any
+  // number this large is not a citation — it's a year or stat. Reject the whole
+  // bracket as literal text rather than minting dead chips (e.g. "[2020-2024]").
+  const MAX_CITE = 99;
+  const out: number[] = [];
+  for (const tok of body.split(",")) {
+    const t = tok.trim();
+    if (!t) continue;
+    const range = /^(\d+)\s*-\s*(\d+)$/.exec(t);
+    if (range) {
+      const lo = Number(range[1]);
+      const hi = Number(range[2]);
+      if (hi < lo || hi > MAX_CITE || hi - lo > 20) return [];
+      for (let k = lo; k <= hi; k++) out.push(k);
+      continue;
     }
-    return <span key={i}>{part}</span>;
-  });
+    if (!/^\d+$/.test(t)) return [];
+    const n = Number(t);
+    if (n > MAX_CITE) return [];
+    out.push(n);
+  }
+  return [...new Set(out)];
 }
 
 // The /x section is just the "On X today" brief — an AI synthesis of the day's
