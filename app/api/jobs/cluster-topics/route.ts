@@ -174,11 +174,14 @@ export async function GET(req: NextRequest) {
 
   // Pass 1 — tight clustering across ALL items at 0.72. Catches same-story
   // multi-outlet coverage regardless of category. mustLink seeds the
-  // paper↔repo / same-arXiv-ID edges before the similarity pass.
+  // paper↔repo / same-arXiv-ID edges before the similarity pass. split_incoherent
+  // re-clusters any group that single-link chained two distinct stories through
+  // a bridge item (e.g. a roundup covering both a model release AND an IPO).
   const rawClusters = clusterByEmbedding(clusterInputs, {
     threshold: CLUSTER_THRESHOLD,
     min_size: PAPER_MIN_CLUSTER_SIZE,
     mustLink,
+    split_incoherent: true,
   });
 
   // Pass 2 — loose THEMATIC clustering over papers only, at 0.62. Catches
