@@ -1,4 +1,5 @@
 # AI News Ranker
+WEBSITE HAS SHUT DOWN DUE TO COST
 
 AI-focused news aggregator that ranks, summarizes, deduplicates, and **groups
 related coverage** into story panels in real time.
